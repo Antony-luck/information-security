@@ -1,0 +1,42 @@
+{
+  "video_id": "sample-001",
+  "title": "内部消息：今晚官方证实，要狠狠干他们",
+  "description": "视频画面中有人斗殴和纵火，评论区已经吵起来了。",
+  "speech_text": "听到爆炸声和尖叫，有人说必须全部封禁。",
+  "bullet_chats": [
+    "这也太狠了",
+    "冲他",
+    "真的假的"
+  ],
+  "comments": [
+    "支持到底，狠狠干",
+    "滚出去，纯纯带节奏",
+    "私信我加V看完整版",
+    "私信我加V看完整版",
+    "吵起来吵起来",
+    "全是假的，脑残才信"
+  ],
+  "visual_descriptions": [
+    "画面里多人斗殴，疑似纵火",
+    "背景有敏感标语"
+  ],
+  "audio_cues": [
+    "尖叫",
+    "爆炸声",
+    "警报"
+  ],
+  "ocr_text": [
+    "内部消息",
+    "紧急通知"
+  ],
+  "metadata": {
+    "author_verified": false,
+    "source_verified": false,
+    "account_age_days": 7,
+    "follower_count": 9,
+    "engagement_spike_ratio": 5.6,
+    "publish_hour": 2,
+    "burst_comment_ratio": 0.73,
+    "region_mismatch": true
+  }
+}

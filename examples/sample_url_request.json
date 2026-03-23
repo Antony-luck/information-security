@@ -1,0 +1,9 @@
+{
+  "source_url": "https://www.douyin.com/jingxuan?modal_id=7589926461256027430",
+  "max_comments": 20,
+  "process_video": true,
+  "frame_interval_seconds": 4,
+  "max_frames": 6,
+  "whisper_model": "tiny",
+  "asr_model_path": "models/asr/tiny"
+}
