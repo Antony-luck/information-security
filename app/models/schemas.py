@@ -14,6 +14,13 @@ class RiskLevel(str, Enum):
     critical = "critical"
 
 
+class CommentSelectionMode(str, Enum):
+    comprehensive = "comprehensive"
+    engagement = "engagement"
+    recent = "recent"
+    risk = "risk"
+
+
 class Evidence(BaseModel):
     source: str
     excerpt: str
@@ -32,6 +39,50 @@ class ModuleFinding(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
 
+class CommentReply(BaseModel):
+    reply_id: str = ""
+    speaker_id: str = ""
+    speaker_sec_uid: str | None = None
+    speaker_nickname: str = ""
+    speaker_unique_id: str | None = None
+    speaker_region: str | None = None
+    text: str = ""
+    like_count: int = 0
+    publish_timestamp: int = 0
+    publish_time: str | None = None
+    ip_label: str | None = None
+    is_author: bool = False
+    is_hot: bool = False
+    is_verified: bool = False
+    has_media: bool = False
+
+
+class CommentRecord(BaseModel):
+    comment_id: str = ""
+    speaker_id: str = ""
+    speaker_sec_uid: str | None = None
+    speaker_nickname: str = ""
+    speaker_unique_id: str | None = None
+    speaker_region: str | None = None
+    text: str = ""
+    like_count: int = 0
+    reply_count: int = 0
+    reply_preview_count: int = 0
+    publish_timestamp: int = 0
+    publish_time: str | None = None
+    ip_label: str | None = None
+    is_author: bool = False
+    is_hot: bool = False
+    is_pinned: bool = False
+    is_verified: bool = False
+    has_media: bool = False
+    label_text: str = ""
+    keyword_tags: list[str] = Field(default_factory=list)
+    importance_score: float = 0.0
+    importance_reasons: list[str] = Field(default_factory=list)
+    replies: list[CommentReply] = Field(default_factory=list)
+
+
 class AnalysisInput(BaseModel):
     video_id: str = "demo-video"
     title: str = ""
@@ -39,6 +90,7 @@ class AnalysisInput(BaseModel):
     speech_text: str = ""
     bullet_chats: list[str] = Field(default_factory=list)
     comments: list[str] = Field(default_factory=list)
+    comment_records: list[CommentRecord] = Field(default_factory=list)
     visual_descriptions: list[str] = Field(default_factory=list)
     audio_cues: list[str] = Field(default_factory=list)
     ocr_text: list[str] = Field(default_factory=list)
@@ -48,6 +100,7 @@ class AnalysisInput(BaseModel):
 class UrlFetchRequest(BaseModel):
     source_url: str
     max_comments: int = Field(default=20, ge=1, le=100)
+    comment_selection_mode: CommentSelectionMode = CommentSelectionMode.comprehensive
     download_video: bool = False
     process_video: bool = True
     frame_interval_seconds: float = Field(default=4.0, ge=1.0, le=30.0)
@@ -133,7 +186,10 @@ class SourceFetchSummary(BaseModel):
     video_download_error: str | None = None
     video_play_url: str | None = None
     comment_count_fetched: int = 0
+    comment_count_scanned: int = 0
     comment_total_reported: int | None = None
+    comment_selection_mode: CommentSelectionMode = CommentSelectionMode.comprehensive
+    comment_selection_strategy: str | None = None
     video_processing: VideoProcessingSummary | None = None
 
 

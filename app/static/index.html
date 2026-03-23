@@ -14,10 +14,13 @@
         <p class="eyebrow">National Information Security Competition Prototype</p>
         <h1>面向短视频多模态融合的内容安全智能研判系统</h1>
         <p class="lead">
-          当前页面已经调整为“先抓取链接并回填，再由分析者手动研判”的工作流。抖音链接采集的信息会直接写入视频编号、标题、描述、评论、OCR 与元数据栏位，右侧则提供采集概览、总览页和各个模块的独立详情页。
+          当前流程固定为“先抓取抖音链接，再自动下载视频并执行抽帧、OCR、ASR，
+          然后把采集结果回填到分析表单”。评论区不再做随机截取，而是先扩大候选集，
+          再按互动强度、回复链、作者参与和风险关键词筛出重要评论。
         </p>
         <div class="hero-actions">
           <button id="fill-demo" class="primary">填充演示样例</button>
+          <a class="secondary" href="/debug/flow" rel="noreferrer">打开数据流检查页</a>
           <a class="secondary" href="/docs" target="_blank" rel="noreferrer">打开 API 文档</a>
         </div>
       </section>
@@ -26,7 +29,7 @@
         <div class="panel">
           <div class="panel-head">
             <h2>分析输入</h2>
-            <p>先输入抖音链接抓取并回填，再按需要手动修订字段后启动分析。</p>
+            <p>先抓取并回填项目栏，再按需要手工补充字段后启动分析。</p>
           </div>
 
           <form id="url-form" class="form">
@@ -35,8 +38,17 @@
               <input id="source_url" placeholder="https://www.douyin.com/..." />
             </label>
             <label>
-              <span>抓取评论数</span>
+              <span>最终保留的重要评论数</span>
               <input id="max_comments" type="number" min="1" max="100" value="20" />
+            </label>
+            <label>
+              <span>评论筛选模式</span>
+              <select id="comment_selection_mode">
+                <option value="comprehensive" selected>综合收集</option>
+                <option value="engagement">按点赞和互动优先</option>
+                <option value="recent">按最近时间优先</option>
+                <option value="risk">按风险关键词优先</option>
+              </select>
             </label>
             <label class="checkbox-row">
               <input id="process_video" type="checkbox" checked />
@@ -45,7 +57,14 @@
             <div class="inline-fields">
               <label>
                 <span>抽帧间隔，秒</span>
-                <input id="frame_interval_seconds" type="number" min="1" max="30" step="1" value="4" />
+                <input
+                  id="frame_interval_seconds"
+                  type="number"
+                  min="1"
+                  max="30"
+                  step="1"
+                  value="4"
+                />
               </label>
               <label>
                 <span>最多抽帧数</span>
@@ -54,8 +73,14 @@
             </div>
             <label>
               <span>离线 ASR 模型目录，可选</span>
-              <input id="asr_model_path" placeholder="例如：models/asr/tiny 或 D:\\models\\whisper-tiny" />
+              <input
+                id="asr_model_path"
+                placeholder="例如：models/asr/tiny 或 D:\\models\\faster-whisper-tiny"
+              />
             </label>
+            <p class="hint">
+              推荐把离线模型下载到 <code>models/asr/tiny</code>，页面和 README 都会按这个目录优先查找。
+            </p>
             <button class="secondary full" type="submit">抓取并填充项目栏</button>
           </form>
 
@@ -81,9 +106,12 @@
               <textarea id="bullet_chats" rows="4"></textarea>
             </label>
             <label>
-              <span>评论，每行一条</span>
+              <span>重要评论文本，每行一条</span>
               <textarea id="comments" rows="6"></textarea>
             </label>
+            <p class="hint">
+              结构化评论详情会在右侧“采集页”展示，文本框保留给你做手工补录和微调。
+            </p>
             <label>
               <span>视频描述 / 抽帧摘要，每行一条</span>
               <textarea id="visual_descriptions" rows="4"></textarea>
@@ -108,15 +136,15 @@
           <div class="panel compact">
             <div class="panel-head">
               <h2>采集概览</h2>
-              <p>展示最近一次抓取或当前表单中的核心信息，便于分析者快速确认素材。</p>
+              <p>显示最近一次抓取或当前表单中的核心素材信息，方便分析者快速确认对象。</p>
             </div>
-            <div id="source-preview" class="result empty">尚未抓取链接数据，或尚未填充分析样例。</div>
+            <div id="source-preview" class="result empty">尚未抓取链接数据，也尚未填充分析样例。</div>
           </div>
 
           <div class="panel compact">
             <div class="panel-head">
               <h2>模块导航</h2>
-              <p>点击总览页、采集页或任一模块，右侧会切换到对应独立详情页。</p>
+              <p>点击总览页、采集页或任一模块，右侧会切换到对应独立详情页面。</p>
             </div>
             <div id="module-nav" class="nav-list"></div>
           </div>
@@ -124,7 +152,7 @@
           <div class="panel compact panel-fill">
             <div class="panel-head">
               <h2>详情页面</h2>
-              <p>分析完成后，这里会显示总览页和各模块证据链、建议、执行轨迹。</p>
+              <p>分析完成后，这里会显示总览页、结构化评论、模块证据链和下一步建议。</p>
             </div>
             <div id="module-detail" class="result empty">等待抓取或分析结果。</div>
           </div>

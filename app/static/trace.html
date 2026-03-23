@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>数据流检查页</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Temporary Debug Page</p>
+        <h1>采集与预处理数据流检查页</h1>
+        <p class="lead">
+          这个页面专门用来核对“链接抓取后我到底收到了什么字段、预处理后变成了什么、最终传给了哪个模块”。
+          只用于测试需求是否符合预期，后续可以直接删掉。
+        </p>
+        <div class="hero-actions">
+          <a class="secondary" href="/" rel="noreferrer">返回主页面</a>
+          <a class="secondary" href="/docs" target="_blank" rel="noreferrer">打开 API 文档</a>
+        </div>
+      </section>
+
+      <section class="grid debug-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>检查输入</h2>
+            <p>输入抖音链接后，页面会展示原始采集数据、预处理结果和模块去向。</p>
+          </div>
+          <form id="trace-form" class="form">
+            <label>
+              <span>抖音链接</span>
+              <input id="source_url" placeholder="https://www.douyin.com/..." />
+            </label>
+            <label>
+              <span>重要评论保留数</span>
+              <input id="max_comments" type="number" min="1" max="100" value="20" />
+            </label>
+            <label>
+              <span>评论筛选模式</span>
+              <select id="comment_selection_mode">
+                <option value="comprehensive" selected>综合收集</option>
+                <option value="engagement">按点赞和互动优先</option>
+                <option value="recent">按最近时间优先</option>
+                <option value="risk">按风险关键词优先</option>
+              </select>
+            </label>
+            <label class="checkbox-row">
+              <input id="process_video" type="checkbox" checked />
+              <span>启用视频处理链路：下载视频 + 抽帧 + OCR + ASR</span>
+            </label>
+            <div class="inline-fields">
+              <label>
+                <span>抽帧间隔，秒</span>
+                <input id="frame_interval_seconds" type="number" min="1" max="30" step="1" value="4" />
+              </label>
+              <label>
+                <span>最多抽帧数</span>
+                <input id="max_frames" type="number" min="1" max="24" step="1" value="6" />
+              </label>
+            </div>
+            <label>
+              <span>离线 ASR 模型目录，可选</span>
+              <input id="asr_model_path" value="models/asr/tiny" />
+            </label>
+            <button class="primary full" type="submit">抓取并生成数据流检查结果</button>
+          </form>
+        </div>
+
+        <div class="stack">
+          <div class="panel compact">
+            <div class="panel-head">
+              <h2>快速摘要</h2>
+              <p>这里先看本次抓取的概览，确认是不是你要的样本。</p>
+            </div>
+            <div id="trace-summary" class="result empty">等待抓取结果。</div>
+          </div>
+
+          <div class="panel compact panel-fill">
+            <div class="panel-head">
+              <h2>数据流详情</h2>
+              <p>会分成原始采集、预处理结果、模块输入路线和完整 JSON 四个部分。</p>
+            </div>
+            <div id="trace-detail" class="result empty">等待抓取结果。</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/trace.js"></script>
+  </body>
+</html>

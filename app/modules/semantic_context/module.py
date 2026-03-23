@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from app.models.schemas import Evidence
-from app.modules.shared import BaseIndependentModule, normalize_text, scan_keyword_groups
+from typing import Any
+
+from app.models.schemas import Evidence, ModuleFinding
+from app.modules.shared import (
+    BaseIndependentModule,
+    clamp_score,
+    normalize_text,
+    scan_keyword_groups,
+    unique_keep_order,
+)
+from app.services import LLMProviderError, build_llm_provider
 
 
 class SemanticContextModule(BaseIndependentModule):
@@ -21,7 +30,17 @@ class SemanticContextModule(BaseIndependentModule):
     }
     FACT_TERMS = ["震惊", "内部消息", "独家爆料", "100%真实", "官方证实", "紧急通知"]
 
+    def __init__(self, llm_provider=None) -> None:
+        self.llm_provider = llm_provider if llm_provider is not None else build_llm_provider()
+
     def analyze(self, content):
+        heuristic_finding = self._run_heuristic(content)
+        llm_finding = self._run_llm(content)
+        if not llm_finding:
+            return heuristic_finding
+        return self._merge_findings(heuristic_finding, llm_finding)
+
+    def _run_heuristic(self, content) -> ModuleFinding:
         texts = (
             content.normalized_segments["title"]
             + content.normalized_segments["description"]
@@ -98,4 +117,149 @@ class SemanticContextModule(BaseIndependentModule):
             tags=tags,
             evidence=evidence[:7],
             recommendations=recommendations,
+        )
+
+    def _run_llm(self, content) -> ModuleFinding | None:
+        if not self.llm_provider:
+            return None
+
+        payload = self._build_llm_payload(content)
+        try:
+            response = self.llm_provider.complete_json(
+                system_prompt=self._system_prompt(),
+                user_payload=payload,
+            )
+        except LLMProviderError:
+            return None
+        except Exception:
+            return None
+
+        llm_payload = response.payload
+        score = clamp_score(float(llm_payload.get("risk_score", 0.0) or 0.0))
+        summary = str(llm_payload.get("summary") or "").strip()
+        if not summary:
+            return None
+
+        evidence = self._parse_llm_evidence(llm_payload.get("evidence"))
+        recommendations = self._parse_string_list(llm_payload.get("recommendations"))
+        tags = self._parse_string_list(llm_payload.get("tags"))
+        tags.extend(["llm-semantic-review", response.provider, response.model])
+
+        return self.build_finding(
+            score=score,
+            summary=summary,
+            tags=tags,
+            evidence=evidence[:4],
+            recommendations=recommendations[:4],
+        )
+
+    def _build_llm_payload(self, content) -> dict[str, Any]:
+        return {
+            "video_id": content.input_payload.video_id,
+            "title": content.input_payload.title,
+            "description": content.input_payload.description,
+            "speech_text": content.input_payload.speech_text[:1500],
+            "ocr_text": content.input_payload.ocr_text[:12],
+            "visual_descriptions": content.input_payload.visual_descriptions[:8],
+            "comments": content.input_payload.comments[:12],
+            "comment_records": [
+                {
+                    "speaker_id": record.speaker_id,
+                    "speaker_nickname": record.speaker_nickname,
+                    "text": record.text,
+                    "like_count": record.like_count,
+                    "reply_count": record.reply_count,
+                    "ip_label": record.ip_label,
+                    "keyword_tags": record.keyword_tags,
+                    "importance_score": record.importance_score,
+                    "replies": [
+                        {
+                            "speaker_nickname": reply.speaker_nickname,
+                            "text": reply.text,
+                            "like_count": reply.like_count,
+                            "is_author": reply.is_author,
+                        }
+                        for reply in record.replies[:3]
+                    ],
+                }
+                for record in content.input_payload.comment_records[:8]
+            ],
+            "audio_cues": content.input_payload.audio_cues[:8],
+            "metadata": {
+                "source_verified": content.standardized_metadata.get("source_verified", False),
+                "author_verified": content.standardized_metadata.get("author_verified", False),
+                "account_age_days": content.standardized_metadata.get("account_age_days", 0),
+                "burst_comment_ratio": content.standardized_metadata.get("burst_comment_ratio", 0.0),
+                "region_mismatch": content.standardized_metadata.get("region_mismatch", False),
+                "comment_count_scanned": content.standardized_metadata.get("comment_count_scanned", 0),
+                "structured_comment_count": content.standardized_metadata.get(
+                    "structured_comment_count", 0
+                ),
+            },
+        }
+
+    def _system_prompt(self) -> str:
+        return (
+            "你是短视频内容安全研判系统中的语义与上下文分析模块。"
+            "你只能根据输入内容判断显性违规、隐性规避表达、黑话缩写、事实断言风险。"
+            "不要捏造输入中不存在的证据。"
+            "请只输出 JSON 对象，不要输出 Markdown。"
+            'JSON schema: {"risk_score":0.0,"summary":"","tags":[],"evidence":[{"source":"","excerpt":"","reason":""}],"recommendations":[]}.'
+            "risk_score 范围必须是 0 到 1。evidence 最多 4 条，recommendations 最多 4 条。"
+        )
+
+    def _parse_llm_evidence(self, raw_value: Any) -> list[Evidence]:
+        evidence: list[Evidence] = []
+        for item in raw_value or []:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source") or "llm-semantic").strip()
+            excerpt = str(item.get("excerpt") or "").strip()
+            reason = str(item.get("reason") or "").strip()
+            if excerpt and reason:
+                evidence.append(
+                    Evidence(
+                        source=source[:60],
+                        excerpt=excerpt[:160],
+                        reason=reason[:160],
+                    )
+                )
+        return evidence
+
+    def _parse_string_list(self, raw_value: Any) -> list[str]:
+        items = raw_value if isinstance(raw_value, list) else []
+        return [
+            str(item).strip()
+            for item in items
+            if str(item).strip()
+        ]
+
+    def _merge_findings(
+        self,
+        heuristic_finding: ModuleFinding,
+        llm_finding: ModuleFinding,
+    ) -> ModuleFinding:
+        merged_score = clamp_score(
+            max(
+                heuristic_finding.risk_score,
+                (heuristic_finding.risk_score * 0.45) + (llm_finding.risk_score * 0.75),
+            )
+        )
+        merged_summary = (
+            llm_finding.summary
+            if llm_finding.risk_score >= heuristic_finding.risk_score
+            else f"{heuristic_finding.summary} LLM 复判补充认为：{llm_finding.summary}"
+        )
+        merged_tags = unique_keep_order([*heuristic_finding.tags, *llm_finding.tags])
+        merged_evidence = [*heuristic_finding.evidence, *llm_finding.evidence]
+        merged_recommendations = unique_keep_order(
+            [*heuristic_finding.recommendations, *llm_finding.recommendations]
+        )
+
+        return self.build_finding(
+            score=merged_score,
+            summary=merged_summary,
+            tags=merged_tags,
+            evidence=merged_evidence[:8],
+            recommendations=merged_recommendations[:6],
         )

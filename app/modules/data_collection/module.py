@@ -12,6 +12,7 @@ class DataCollectionModule(BaseIndependentModule):
     def analyze(self, content: PreprocessedContent):
         metadata = content.standardized_metadata
         segments = content.normalized_segments
+        comment_records = content.input_payload.comment_records
         evidence: list[Evidence] = []
         tags: list[str] = []
         score = 0.0
@@ -35,7 +36,7 @@ class DataCollectionModule(BaseIndependentModule):
                 Evidence(
                     source="collection",
                     excerpt=f"有效模态数: {modality_count}",
-                    reason="采集模态较少，后续分析依据不足",
+                    reason="当前可用模态较少，后续判断将更多依赖单一证据",
                 )
             )
 
@@ -46,9 +47,73 @@ class DataCollectionModule(BaseIndependentModule):
                 Evidence(
                     source="collection",
                     excerpt="comments=0",
-                    reason="评论区样本缺失，评论分析模块将只能给出保守结果",
+                    reason="没有可用评论样本，评论区分析会退化为保守判断",
                 )
             )
+        elif not comment_records:
+            score += 0.1
+            tags.append("comment-structure-missing")
+            evidence.append(
+                Evidence(
+                    source="collection",
+                    excerpt=f"plain_comments={len(segments.get('comments', []))}",
+                    reason="只有纯文本评论，没有评论者、点赞、回复链等结构化字段",
+                )
+            )
+
+        if comment_records:
+            structured_ratio = sum(
+                1
+                for record in comment_records
+                if record.speaker_id and (record.like_count >= 0) and record.publish_time
+            ) / max(len(comment_records), 1)
+            reply_rich_ratio = sum(
+                1
+                for record in comment_records
+                if record.reply_count > 0 or record.reply_preview_count > 0
+            ) / max(len(comment_records), 1)
+            scanned_count = int(metadata.get("comment_count_scanned", len(comment_records)) or 0)
+
+            if structured_ratio < 0.75:
+                score += 0.08
+                tags.append("comment-structure-thin")
+                evidence.append(
+                    Evidence(
+                        source="collection",
+                        excerpt=f"structured_ratio={structured_ratio:.2f}",
+                        reason="结构化评论字段覆盖不足，评论者画像和互动链会不完整",
+                    )
+                )
+
+            if reply_rich_ratio < 0.2:
+                score += 0.05
+                tags.append("reply-thread-thin")
+                evidence.append(
+                    Evidence(
+                        source="collection",
+                        excerpt=f"reply_rich_ratio={reply_rich_ratio:.2f}",
+                        reason="高价值回复链过少，评论互动结构信息偏薄",
+                    )
+                )
+
+            if scanned_count <= len(comment_records):
+                score += 0.06
+                tags.append("comment-ranking-shallow")
+                evidence.append(
+                    Evidence(
+                        source="collection",
+                        excerpt=f"scanned={scanned_count}, selected={len(comment_records)}",
+                        reason="评论候选集和最终入选集几乎相同，说明重要评论筛选空间不足",
+                    )
+                )
+            else:
+                evidence.append(
+                    Evidence(
+                        source="collection",
+                        excerpt=f"scanned={scanned_count}, selected={len(comment_records)}",
+                        reason="评论不是随机截取，而是先扩大候选集再做重要性筛选",
+                    )
+                )
 
         if not segments.get("speech_text") and not metadata.get("platform_caption"):
             score += 0.12
@@ -57,7 +122,7 @@ class DataCollectionModule(BaseIndependentModule):
                 Evidence(
                     source="collection",
                     excerpt="speech_text=0",
-                    reason="未获得可用语音文本，语义分析覆盖度下降",
+                    reason="缺少语音文本，语义分析会失去音频内容支撑",
                 )
             )
 
@@ -67,8 +132,13 @@ class DataCollectionModule(BaseIndependentModule):
             evidence.append(
                 Evidence(
                     source="metadata",
-                    excerpt=str(metadata),
-                    reason="来源未标记为可信信源，数据可信度需要人工复核",
+                    excerpt=str(
+                        {
+                            "source_verified": metadata.get("source_verified", False),
+                            "author_verified": metadata.get("author_verified", False),
+                        }
+                    ),
+                    reason="来源未被平台标记为可信账号，元数据仍需人工复核",
                 )
             )
 
@@ -79,7 +149,7 @@ class DataCollectionModule(BaseIndependentModule):
                 Evidence(
                     source="metadata",
                     excerpt=str(metadata.get("account_age_days")),
-                    reason="账号注册时间较短，传播可信度偏弱",
+                    reason="账号年龄较短，传播可信度需要结合更多外部证据判断",
                 )
             )
 
@@ -89,27 +159,30 @@ class DataCollectionModule(BaseIndependentModule):
             evidence.append(
                 Evidence(
                     source="metadata",
-                    excerpt=str(metadata),
-                    reason="内容地域描述与元数据疑似不一致",
+                    excerpt=str(metadata.get("region_mismatch")),
+                    reason="内容叙述和元数据存在地域不一致的迹象",
                 )
             )
 
         if evidence:
-            summary = "采集链路已经完成，但当前样本在数据完整性或元数据可信度上仍存在不确定性，综合决策时应提高人工复核优先级。"
+            summary = (
+                "采集链路已完成，但样本在完整性、评论结构化程度或元数据可信度上"
+                "仍存在需要复核的地方。"
+            )
             recommendations = [
-                "补齐评论、语音或 OCR 中缺失的模态数据，提升后续分析稳定性。",
-                "对来源可信度偏低的样本保留原始链接、采集时间和快照，便于复核。",
+                "优先保留结构化评论字段，至少包含 speaker_id、点赞数、回复总数和回复预览。",
+                "继续补齐语音、OCR 和视频快照，避免后续模块仅依赖单一模态判断。",
             ]
         else:
-            summary = "当前样本的采集字段较完整，元数据基础可信度正常，可作为后续各独立模块的稳定输入。"
+            summary = "当前样本的采集字段较完整，结构化评论和元数据质量可支撑后续模块稳定分析。"
             recommendations = [
-                "继续保持采集链路的字段规范化和结构化输出，方便后续模块直接复用。"
+                "维持结构化输出规范，确保评论者信息、互动强度和回复链在接口层持续可复用。"
             ]
 
         return self.build_finding(
             score=score,
             summary=summary,
             tags=tags,
-            evidence=evidence[:5],
+            evidence=evidence[:6],
             recommendations=recommendations,
         )
