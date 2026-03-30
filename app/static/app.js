@@ -1,113 +1,146 @@
 const byId = (id) => document.getElementById(id);
 
-const demoPayload = {
-  video_id: "demo-risk-001",
-  source_url: "https://www.douyin.com/jingxuan?modal_id=7589926461256027430",
-  title: "内部消息：今晚官方要严肃处理相关账号",
-  description: "视频画面中出现多人冲突，评论区存在高互动争议评论和异常引流表达。",
-  speech_text: "现场有人尖叫，背景里出现疑似警报声和情绪化喊叫。",
-  bullet_chats: ["这也太狠了", "真的假的", "别带节奏"],
-  comments: [
-    "私信我加V看完整版",
-    "滚出去，纯纯带节奏",
-    "支持到底，狠狠处理",
-    "这全是假的吧"
-  ],
-  comment_records: [
-    {
-      comment_id: "demo-comment-1",
-      speaker_id: "user-1",
-      speaker_nickname: "热评用户A",
-      text: "私信我加V看完整版",
-      like_count: 28,
-      reply_count: 6,
-      reply_preview_count: 2,
-      publish_time: "2026-03-23T12:31:00+08:00",
-      ip_label: "广东",
-      is_hot: true,
-      is_pinned: false,
-      is_author: false,
-      is_verified: false,
-      has_media: false,
-      label_text: "",
-      keyword_tags: ["drainage"],
-      importance_score: 3.12,
-      importance_reasons: ["点赞 28", "回复 6", "命中标签: drainage"],
-      replies: [
-        {
-          reply_id: "demo-reply-1",
-          speaker_id: "user-2",
-          speaker_nickname: "围观用户",
-          text: "主页是不是还有别的链接？",
-          like_count: 3,
-          publish_time: "2026-03-23T12:36:00+08:00",
-          ip_label: "福建",
-          is_author: false,
-          is_hot: false,
-          is_verified: false,
-          has_media: false
-        }
-      ]
-    },
-    {
-      comment_id: "demo-comment-2",
-      speaker_id: "user-3",
-      speaker_nickname: "情绪用户B",
-      text: "滚出去，纯纯带节奏",
-      like_count: 15,
-      reply_count: 4,
-      reply_preview_count: 1,
-      publish_time: "2026-03-23T12:42:00+08:00",
-      ip_label: "江苏",
-      is_hot: false,
-      is_pinned: false,
-      is_author: false,
-      is_verified: false,
-      has_media: false,
-      label_text: "",
-      keyword_tags: ["polarized", "conflict"],
-      importance_score: 2.85,
-      importance_reasons: ["点赞 15", "回复 4", "命中标签: polarized, conflict"],
-      replies: []
-    }
-  ],
-  visual_descriptions: ["多人冲突场景", "背景画面出现敏感标语"],
-  audio_cues: ["尖叫", "爆炸声", "警报"],
-  ocr_text: ["内部消息", "紧急通知"],
-  metadata: {
-    platform: "douyin",
-    source_verified: false,
-    author_verified: false,
-    account_age_days: 7,
-    follower_count: 9,
-    engagement_spike_ratio: 5.6,
-    publish_hour: 2,
-    burst_comment_ratio: 0.73,
-    region_mismatch: true,
-    comment_count_scanned: 30,
-    comment_count_selected: 4,
-    comment_selection_mode: "comprehensive",
-    comment_selection_strategy:
-      "engagement + reply-thread + author-participation + keyword-signal + dedupe"
-  }
-};
-
 const state = {
   modules: [],
   source: null,
   inputPayload: null,
-  analysis: null
+  analysis: null,
+  downloadUrls: [],
 };
 
-const downloadStore = new Map();
-let downloadCounter = 0;
+const RISK_LEVEL_LABELS = {
+  low: "低风险",
+  medium: "中风险",
+  high: "高风险",
+  critical: "严重风险",
+};
 
-function splitLines(value) {
-  return String(value ?? "")
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
+const COMMENT_MODE_LABELS = {
+  comprehensive: "综合收集",
+  engagement: "点赞/互动优先",
+  recent: "最近时间优先",
+  risk: "风险关键词优先",
+};
+
+const STEP_STATUS_LABELS = {
+  completed: "完成",
+  running: "进行中",
+  pending: "待处理",
+  failed: "失败",
+};
+
+const TAG_LABELS = {
+  "low-coverage": "模态覆盖不足",
+  "comment-gap": "评论缺失",
+  "comment-structure-missing": "评论结构化缺失",
+  "comment-structure-thin": "评论结构化偏弱",
+  "reply-thread-thin": "回复链偏弱",
+  "comment-ranking-shallow": "评论筛选深度不足",
+  "speech-gap": "语音文本缺失",
+  "source-unverified": "来源未认证",
+  "new-account": "新注册账号",
+  "region-mismatch": "地域不一致",
+  abuse: "辱骂攻击",
+  porn: "色情导流",
+  violence_extremism: "暴力极端",
+  coded_words: "暗语规避",
+  slang_abuse: "缩写辱骂",
+  evasion: "规避表达",
+  factuality: "事实断言",
+  "implicit-risk": "隐性风险",
+  "overall-low": "总体风险-低",
+  "overall-medium": "总体风险-中",
+  "overall-high": "总体风险-高",
+  "overall-critical": "总体风险-严重",
+  "polarized": "群体极化",
+  "conflict": "冲突对喷",
+  "drainage": "引流导流",
+  "fact_claim": "事实断言",
+  data_collection: "数据处理与采集模块",
+  audiovisual_content: "音画内容分析模块",
+  semantic_context: "语义与上下文分析模块",
+  comment_analysis: "评论区分析模块",
+  comprehensive_decision: "综合决策模块",
+  title: "标题",
+  description: "描述",
+  speech_text: "语音文本",
+  comments: "评论文本",
+  bullet_chats: "弹幕",
+  visual_descriptions: "视频摘要/抽帧描述",
+  audio_cues: "音频线索",
+  ocr_text: "OCR文本",
+  comment_records: "结构化评论",
+  comment_count_scanned: "评论扫描数量",
+  source_verified: "来源认证状态",
+  author_verified: "作者认证状态",
+  account_age_days: "账号年龄",
+  normalized_segments: "预处理分段",
+  standardized_metadata: "标准化元数据",
+  comment_corpus: "评论语料",
+  execution_trace: "执行轨迹",
+  module_findings: "模块结论",
+  overall_risk_score: "综合风险分数",
+  next_actions: "下一步动作",
+  recommendations: "处置建议",
+};
+
+function localizeRiskLevel(level) {
+  const key = String(level || "low").toLowerCase();
+  return RISK_LEVEL_LABELS[key] || "低风险";
 }
+
+function localizeCommentSelectionMode(mode) {
+  const key = String(mode || "").toLowerCase();
+  if (!key || key === "-") {
+    return "未设置";
+  }
+  return COMMENT_MODE_LABELS[key] || String(mode || "");
+}
+
+function localizeStepStatus(status) {
+  const key = String(status || "").toLowerCase();
+  return STEP_STATUS_LABELS[key] || String(status || "");
+}
+
+function localizeTag(tag) {
+  const value = String(tag || "").trim();
+  return TAG_LABELS[value] || value;
+}
+
+function localizePlatform(platform) {
+  const value = String(platform || "").trim().toLowerCase();
+  if (!value || value === "unknown") {
+    return "未知平台";
+  }
+  if (value === "douyin") {
+    return "抖音";
+  }
+  if (value === "demo") {
+    return "演示样例";
+  }
+  return String(platform);
+}
+
+const DEMO_PAYLOAD = {
+  video_id: "demo-risk-001",
+  title: "潜在风险短视频演示样例",
+  description:
+    "这是用于流程演示的模拟样例，请抓取真实抖音链接进行正式研判。",
+  speech_text: "该信息尚未核实，请以权威来源为准。",
+  bullet_chats: [],
+  comments: [
+    "私信我可看完整版",
+    "这条信息可疑，转发前请先核实",
+  ],
+  comment_records: [],
+  visual_descriptions: ["路口附近出现人群聚集"],
+  audio_cues: ["疑似警报声"],
+  ocr_text: ["紧急通知"],
+  metadata: {
+    platform: "演示样例",
+    comment_selection_mode: "comprehensive",
+  },
+};
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -121,688 +154,255 @@ function formatJson(value) {
   return escapeHtml(JSON.stringify(value ?? {}, null, 2));
 }
 
-function registerDownload(content, filename) {
-  const key = `download-${++downloadCounter}`;
-  downloadStore.set(key, { content: String(content ?? ""), filename });
-  return key;
-}
-
-function downloadByKey(key) {
-  const item = downloadStore.get(key);
-  if (!item) {
-    return;
-  }
-  const blob = new Blob([item.content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = item.filename || "export.txt";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function buildTextPreview(value, limit = 220) {
-  const text = String(value ?? "").trim();
-  if (text.length <= limit) {
-    return text;
-  }
-  return `${text.slice(0, limit)}...`;
-}
-
-function truncateText(value, limit = 220) {
-  return buildTextPreview(value, limit);
-}
-
-function renderDownloadButton(downloadKey, label = "下载全文") {
-  return `
-    <button type="button" class="secondary small" data-download-key="${escapeHtml(downloadKey)}">
-      ${escapeHtml(label)}
-    </button>
-  `;
-}
-
-function badge(level) {
-  return `<span class="badge ${escapeHtml(level)}">${escapeHtml(level)}</span>`;
-}
-
-function setInputValue(id, value) {
-  byId(id).value = value ?? "";
-}
-
-function commentTextsFromRecords(records) {
-  return (records || [])
-    .map((record) => String(record?.text ?? "").trim())
+function toLines(value) {
+  return String(value ?? "")
+    .split("\n")
+    .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function arraysEqual(left, right) {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((item, index) => item === right[index]);
-}
-
-function normalizeCommentRecords(comments, existingRecords) {
-  const existingTexts = commentTextsFromRecords(existingRecords);
-  if (existingRecords?.length && arraysEqual(existingTexts, comments)) {
-    return existingRecords;
-  }
-  return comments.map((text, index) => ({
-    comment_id: `manual-comment-${index + 1}`,
-    speaker_id: "",
-    speaker_nickname: "manual",
-    text,
-    like_count: 0,
-    reply_count: 0,
-    reply_preview_count: 0,
-    publish_time: null,
-    ip_label: null,
-    is_author: false,
-    is_hot: false,
-    is_pinned: false,
-    is_verified: false,
-    has_media: false,
-    label_text: "",
-    keyword_tags: [],
-    importance_score: 0,
-    importance_reasons: ["manual-input"],
-    replies: []
-  }));
-}
-
-function fillForm(payload) {
-  const commentLines =
-    (payload.comments?.length ? payload.comments : commentTextsFromRecords(payload.comment_records)) || [];
-
-  setInputValue("source_url", payload.source_url ?? state.source?.source_url ?? "");
-  byId("comment_selection_mode").value =
-    payload.metadata?.comment_selection_mode || state.source?.comment_selection_mode || "comprehensive";
-  setInputValue("video_id", payload.video_id ?? "");
-  setInputValue("title", payload.title ?? "");
-  setInputValue("description", payload.description ?? "");
-  setInputValue("speech_text", payload.speech_text ?? "");
-  setInputValue("bullet_chats", (payload.bullet_chats ?? []).join("\n"));
-  setInputValue("comments", commentLines.join("\n"));
-  setInputValue("visual_descriptions", (payload.visual_descriptions ?? []).join("\n"));
-  setInputValue("audio_cues", (payload.audio_cues ?? []).join("\n"));
-  setInputValue("ocr_text", (payload.ocr_text ?? []).join("\n"));
-  setInputValue("metadata", JSON.stringify(payload.metadata ?? {}, null, 2));
-}
-
-function readPayloadFromForm() {
-  const metadataText = byId("metadata").value.trim();
-  let metadata = {};
-
-  if (metadataText) {
-    metadata = JSON.parse(metadataText);
-    if (!metadata || Array.isArray(metadata) || typeof metadata !== "object") {
-      throw new Error("元数据 JSON 必须是对象");
-    }
-  }
-
-  const comments = splitLines(byId("comments").value);
-  const commentRecords = normalizeCommentRecords(comments, state.inputPayload?.comment_records || []);
-
-  return {
-    video_id: byId("video_id").value.trim(),
-    title: byId("title").value.trim(),
-    description: byId("description").value.trim(),
-    speech_text: byId("speech_text").value.trim(),
-    bullet_chats: splitLines(byId("bullet_chats").value),
-    comments,
-    comment_records: commentRecords,
-    visual_descriptions: splitLines(byId("visual_descriptions").value),
-    audio_cues: splitLines(byId("audio_cues").value),
-    ocr_text: splitLines(byId("ocr_text").value),
-    metadata
-  };
-}
-
-function syncFormState() {
-  try {
-    state.inputPayload = readPayloadFromForm();
-  } catch {
-    return;
-  }
-  renderSourcePreview();
-  if (parseRoute().type === "source") {
-    renderDetailPage();
-  }
-}
-
-function parseRoute() {
-  const normalized = window.location.hash.replace(/^#\/?/, "");
-  if (!normalized || normalized === "overview") {
-    return { type: "overview" };
-  }
-  if (normalized === "source") {
-    return { type: "source" };
-  }
-  if (normalized.startsWith("module/")) {
-    return { type: "module", id: normalized.slice("module/".length) };
-  }
-  return { type: "overview" };
-}
-
-function routeTo(hash) {
-  if (window.location.hash === hash) {
-    renderModuleNav();
-    renderDetailPage();
-    return;
-  }
-  window.location.hash = hash;
-}
-
-function getFinding(moduleId) {
-  return state.analysis?.module_findings?.find((item) => item.module_id === moduleId) ?? null;
 }
 
 function renderLoading(message) {
   return `<div class="summary-card"><p>${escapeHtml(message)}</p></div>`;
 }
 
-function renderEmptyCard(title, description) {
+function levelClass(level) {
+  const v = String(level || "").toLowerCase();
+  if (v === "critical" || v === "high" || v === "medium" || v === "low") {
+    return v;
+  }
+  return "low";
+}
+
+function renderBadge(level) {
+  const key = String(level || "low").toLowerCase();
+  return `<span class="badge ${levelClass(key)}">${escapeHtml(localizeRiskLevel(key))}</span>`;
+}
+
+function cleanupDownloadUrls() {
+  for (const url of state.downloadUrls) {
+    URL.revokeObjectURL(url);
+  }
+  state.downloadUrls = [];
+}
+
+function makeDownloadLink(content, filename, label = "下载完整文本") {
+  if (!content) {
+    return "";
+  }
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  state.downloadUrls.push(url);
+  return `<a class="secondary small" href="${escapeHtml(url)}" download="${escapeHtml(filename)}">${escapeHtml(label)}</a>`;
+}
+
+function truncateText(text, maxChars) {
+  const source = String(text || "");
+  if (source.length <= maxChars) {
+    return source;
+  }
+  return `${source.slice(0, maxChars)} ...`;
+}
+
+function renderTextCard(title, text, filename) {
+  const source = String(text || "").trim();
+  if (!source) {
+    return `
+      <article class="summary-card">
+        <h3>${escapeHtml(title)}</h3>
+        <p>暂无内容。</p>
+      </article>
+    `;
+  }
+
+  const short = truncateText(source, 480);
+  const needsCollapse = source.length > 480;
+  const download = makeDownloadLink(source, filename);
+
+  if (!needsCollapse) {
+    return `
+      <article class="summary-card">
+        <h3>${escapeHtml(title)}</h3>
+        <pre class="code-block">${escapeHtml(source)}</pre>
+        <div class="action-row">${download}</div>
+      </article>
+    `;
+  }
+
   return `
     <article class="summary-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <p>${escapeHtml(description)}</p>
+      <h3>${escapeHtml(title)}</h3>
+      <pre class="code-block">${escapeHtml(short)}</pre>
+      <details class="expandable">
+        <summary>展开完整文本（${source.length} 字）</summary>
+        <pre class="code-block">${escapeHtml(source)}</pre>
+      </details>
+      <div class="action-row">${download}</div>
     </article>
   `;
 }
 
-function renderKeyGrid(items) {
-  return `
-    <div class="key-grid">
-      ${items
-        .map(
-          (item) => `
-            <article class="key-card">
-              <span>${escapeHtml(item.label)}</span>
-              <strong>${escapeHtml(item.value)}</strong>
-            </article>
-          `
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function renderListCardV2(title, items) {
-  if (!items.length) {
-    return "";
+function renderListCard(title, items, filename, defaultLimit = 20) {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!list.length) {
+    return `
+      <article class="summary-card">
+        <h3>${escapeHtml(title)}</h3>
+        <p>暂无数据。</p>
+      </article>
+    `;
   }
-  const fullText = items.join("\n");
-  const needsCollapse = items.length > 6 || fullText.length > 360;
-  const downloadKey = registerDownload(fullText, `${title}.txt`);
+
+  const preview = list.slice(0, defaultLimit);
+  const overflow = list.length > defaultLimit;
+  const fullText = list.map((item) => String(item)).join("\n");
+  const download = makeDownloadLink(fullText, filename, "下载完整列表");
+
   return `
     <article class="summary-card">
       <div class="summary-top">
         <h3>${escapeHtml(title)}</h3>
+        <span class="pill">数量 ${list.length}</span>
       </div>
       <ul>
-        ${(needsCollapse ? items.slice(0, 5) : items)
-          .map((item) => `<li>${escapeHtml(item)}</li>`)
-          .join("")}
+        ${preview.map((item) => `<li>${escapeHtml(String(item))}</li>`).join("")}
       </ul>
       ${
-        needsCollapse
+        overflow
           ? `
-            <details class="expandable">
-              <summary>展开全部 ${escapeHtml(items.length)} 条</summary>
-              <ul>
-                ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-              </ul>
-            </details>
-          `
+          <details class="expandable">
+            <summary>展开完整列表（${list.length} 条）</summary>
+            <pre class="code-block">${escapeHtml(fullText)}</pre>
+          </details>
+        `
           : ""
       }
-      <div class="action-row">
-        <button type="button" class="secondary small" data-download-key="${escapeHtml(downloadKey)}">下载全文</button>
-      </div>
+      <div class="action-row">${download}</div>
     </article>
   `;
 }
 
-function renderExpandableTextCardV2(title, text, filename) {
-  const normalized = String(text ?? "").trim();
-  if (!normalized) {
-    return "";
+function setValue(id, value) {
+  const node = byId(id);
+  if (node) {
+    node.value = value ?? "";
   }
-  const needsCollapse = normalized.length > 320;
-  const downloadKey = registerDownload(normalized, filename);
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <p class="text-preview">${escapeHtml(needsCollapse ? truncateText(normalized, 300) : normalized)}</p>
-      ${
-        needsCollapse
-          ? `
-            <details class="expandable">
-              <summary>展开全文</summary>
-              <pre class="code-block">${escapeHtml(normalized)}</pre>
-            </details>
-          `
-          : ""
-      }
-      <div class="action-row">
-        <button type="button" class="secondary small" data-download-key="${escapeHtml(downloadKey)}">下载全文</button>
-      </div>
-    </article>
-  `;
 }
 
-function renderFrameGallery(frames) {
-  if (!frames.length) {
-    return "";
-  }
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>抽帧结果</h3>
-      </div>
-      <div class="frame-gallery">
-        ${frames
-          .map(
-            (frame) => `
-              <figure class="frame-card">
-                ${
-                  frame.image_url
-                    ? `<img src="${escapeHtml(frame.image_url)}" alt="frame-${escapeHtml(frame.timestamp_seconds)}" />`
-                    : ""
-                }
-                <figcaption>
-                  <strong>${escapeHtml(Number(frame.timestamp_seconds || 0).toFixed(1))}s</strong>
-                  <span>${escapeHtml((frame.ocr_text || []).slice(0, 2).join(" / ") || "无 OCR 文本")}</span>
-                </figcaption>
-              </figure>
-            `
-          )
-          .join("")}
-      </div>
-    </article>
-  `;
+function fillForm(payload) {
+  const source = state.source || {};
+  setValue("source_url", source.source_url || "");
+  byId("comment_selection_mode").value =
+    source.comment_selection_mode ||
+    payload?.metadata?.comment_selection_mode ||
+    "comprehensive";
 }
 
-function renderStructuredCommentsV2(records) {
-  if (!records.length) {
-    return "";
+function getRoute() {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (!hash || hash === "overview") {
+    return { type: "overview" };
   }
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>结构化重要评论</h3>
-      </div>
-      <div class="comment-grid">
-        ${records
-          .map((record) => {
-            const replyLines = (record.replies || [])
-              .slice(0, 3)
-              .map(
-                (reply) => `
-                  <div class="comment-reply">
-                    <strong>${escapeHtml(reply.speaker_nickname || reply.speaker_id || "unknown")}</strong>
-                    <span>${escapeHtml(reply.text || "")}</span>
-                  </div>
-                `
-              )
-              .join("");
-
-            return `
-              <article class="comment-card">
-                <div class="summary-top">
-                  <h3>${escapeHtml(record.speaker_nickname || record.speaker_id || "unknown")}</h3>
-                  <span class="pill">score ${escapeHtml(Number(record.importance_score || 0).toFixed(2))}</span>
-                </div>
-                <p>${escapeHtml(record.text || "")}</p>
-                <div class="meta">
-                  <span class="pill">speaker ${escapeHtml(record.speaker_id || "-")}</span>
-                  <span class="pill">赞 ${escapeHtml(record.like_count || 0)}</span>
-                  <span class="pill">回复 ${escapeHtml(record.reply_count || 0)}</span>
-                  ${record.ip_label ? `<span class="pill">IP ${escapeHtml(record.ip_label)}</span>` : ""}
-                  ${record.is_author ? '<span class="pill">作者发言</span>' : ""}
-                  ${record.is_hot ? '<span class="pill">热门</span>' : ""}
-                  ${record.is_pinned ? '<span class="pill">置顶</span>' : ""}
-                </div>
-                ${
-                  record.keyword_tags?.length
-                    ? `<div class="meta">${record.keyword_tags
-                        .map((item) => `<span class="pill">${escapeHtml(item)}</span>`)
-                        .join("")}</div>`
-                    : ""
-                }
-                ${
-                  record.importance_reasons?.length
-                    ? `<p class="subtle">入选原因：${escapeHtml(record.importance_reasons.join(" | "))}</p>`
-                    : ""
-                }
-                ${
-                  replyLines
-                    ? `
-                      <div class="comment-reply-list">
-                        <span class="subtle">回复预览</span>
-                        ${replyLines}
-                      </div>
-                    `
-                    : ""
-                }
-              </article>
-            `;
-          })
-          .join("")}
-      </div>
-    </article>
-  `;
+  if (hash === "source") {
+    return { type: "module", moduleId: "data_collection" };
+  }
+  if (hash === "flow") {
+    return { type: "flow" };
+  }
+  if (hash.startsWith("module/")) {
+    return { type: "module", moduleId: hash.slice("module/".length) };
+  }
+  return { type: "overview" };
 }
 
-function renderInlineExpandableText(text, limit = 180) {
-  const normalized = String(text ?? "").trim();
-  if (!normalized) {
-    return '<p class="text-preview">-</p>';
+function navigateTo(routeHash) {
+  if (window.location.hash === routeHash) {
+    renderDetail();
+    return;
   }
-  if (normalized.length <= limit) {
-    return `<p class="text-preview">${escapeHtml(normalized)}</p>`;
-  }
-  return `
-    <p class="text-preview">${escapeHtml(buildTextPreview(normalized, limit))}</p>
-    <details class="expandable">
-      <summary>展开全文</summary>
-      <pre class="code-block">${escapeHtml(normalized)}</pre>
-    </details>
-  `;
+  window.location.hash = routeHash;
 }
 
-function formatStructuredCommentExport(records) {
-  return records
-    .map((record, index) => {
-      const replies = (record.replies || [])
-        .map(
-          (reply, replyIndex) =>
-            `  [reply ${replyIndex + 1}] ${reply.speaker_nickname || reply.speaker_id || "unknown"}: ${reply.text || ""}`
-        )
-        .join("\n");
-
-      return [
-        `# comment ${index + 1}`,
-        `comment_id: ${record.comment_id || ""}`,
-        `speaker_id: ${record.speaker_id || ""}`,
-        `speaker_nickname: ${record.speaker_nickname || ""}`,
-        `publish_time: ${record.publish_time || ""}`,
-        `like_count: ${record.like_count || 0}`,
-        `reply_count: ${record.reply_count || 0}`,
-        `ip_label: ${record.ip_label || ""}`,
-        `keyword_tags: ${(record.keyword_tags || []).join(", ")}`,
-        `importance_score: ${Number(record.importance_score || 0).toFixed(2)}`,
-        `text: ${record.text || ""}`,
-        replies ? `replies:\n${replies}` : "replies:",
-      ].join("\n");
-    })
-    .join("\n\n");
-}
-
-function renderListCard(title, items) {
-  if (!items.length) {
-    return "";
-  }
-  const normalizedItems = items.map((item) => String(item ?? "").trim()).filter(Boolean);
-  if (!normalizedItems.length) {
-    return "";
-  }
-  const fullText = normalizedItems.join("\n");
-  const needsCollapse = normalizedItems.length > 6 || fullText.length > 360;
-  const downloadKey = registerDownload(fullText, `${title}.txt`);
-
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <ul>
-        ${(needsCollapse ? normalizedItems.slice(0, 5) : normalizedItems)
-          .map((item) => `<li>${escapeHtml(item)}</li>`)
-          .join("")}
-      </ul>
-      ${
-        needsCollapse
-          ? `
-            <details class="expandable">
-              <summary>展开全部 ${escapeHtml(normalizedItems.length)} 条</summary>
-              <ul>
-                ${normalizedItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-              </ul>
-            </details>
-          `
-          : ""
-      }
-      <div class="action-row">
-        ${renderDownloadButton(downloadKey)}
-      </div>
-    </article>
-  `;
-}
-
-function renderExpandableTextCard(title, text, filename) {
-  const normalized = String(text ?? "").trim();
-  if (!normalized) {
-    return "";
-  }
-  const needsCollapse = normalized.length > 320;
-  const downloadKey = registerDownload(normalized, filename || `${title}.txt`);
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(title)}</h3>
-      </div>
-      <p class="text-preview">${escapeHtml(needsCollapse ? buildTextPreview(normalized, 300) : normalized)}</p>
-      ${
-        needsCollapse
-          ? `
-            <details class="expandable">
-              <summary>展开全文</summary>
-              <pre class="code-block">${escapeHtml(normalized)}</pre>
-            </details>
-          `
-          : ""
-      }
-      <div class="action-row">
-        ${renderDownloadButton(downloadKey)}
-      </div>
-    </article>
-  `;
-}
-
-function renderCommentCard(record) {
-  const replyLines = (record.replies || [])
-    .slice(0, 3)
-    .map(
-      (reply) => `
-        <div class="comment-reply">
-          <strong>${escapeHtml(reply.speaker_nickname || reply.speaker_id || "unknown")}</strong>
-          <span>${escapeHtml(buildTextPreview(reply.text || "", 120))}</span>
-        </div>
-      `
-    )
-    .join("");
-
-  return `
-    <article class="comment-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(record.speaker_nickname || record.speaker_id || "unknown")}</h3>
-        <span class="pill">score ${escapeHtml(Number(record.importance_score || 0).toFixed(2))}</span>
-      </div>
-      ${renderInlineExpandableText(record.text || "", 180)}
-      <div class="meta">
-        <span class="pill">speaker ${escapeHtml(record.speaker_id || "-")}</span>
-        <span class="pill">赞 ${escapeHtml(record.like_count || 0)}</span>
-        <span class="pill">回复 ${escapeHtml(record.reply_count || 0)}</span>
-        ${record.publish_time ? `<span class="pill">${escapeHtml(record.publish_time)}</span>` : ""}
-        ${record.ip_label ? `<span class="pill">IP ${escapeHtml(record.ip_label)}</span>` : ""}
-        ${record.is_author ? '<span class="pill">作者发言</span>' : ""}
-        ${record.is_hot ? '<span class="pill">热门</span>' : ""}
-        ${record.is_pinned ? '<span class="pill">置顶</span>' : ""}
-      </div>
-      ${
-        record.keyword_tags?.length
-          ? `<div class="meta">${record.keyword_tags
-              .map((item) => `<span class="pill">${escapeHtml(item)}</span>`)
-              .join("")}</div>`
-          : ""
-      }
-      ${
-        record.importance_reasons?.length
-          ? `<p class="subtle">入选原因：${escapeHtml(record.importance_reasons.join(" | "))}</p>`
-          : ""
-      }
-      ${
-        replyLines
-          ? `
-            <div class="comment-reply-list">
-              <span class="subtle">回复预览</span>
-              ${replyLines}
-            </div>
-          `
-          : ""
-      }
-    </article>
-  `;
-}
-
-function renderStructuredComments(records) {
-  if (!records.length) {
-    return "";
-  }
-  const visibleRecords = records.slice(0, 6);
-  const hiddenRecords = records.slice(6);
-  const downloadKey = registerDownload(
-    formatStructuredCommentExport(records),
-    "structured-comments.txt"
+function findModuleFinding(moduleId) {
+  return (
+    state.analysis?.module_findings?.find((item) => item.module_id === moduleId) ||
+    null
   );
-
-  return `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>结构化重要评论</h3>
-      </div>
-      <p class="hint">默认展示前 6 条评论卡片。单条长评论可展开，完整结构化评论可下载。</p>
-      <div class="action-row">
-        ${renderDownloadButton(downloadKey, "下载评论汇总")}
-      </div>
-      <div class="comment-grid">
-        ${visibleRecords.map((record) => renderCommentCard(record)).join("")}
-      </div>
-      ${
-        hiddenRecords.length
-          ? `
-            <details class="expandable">
-              <summary>展开其余 ${escapeHtml(hiddenRecords.length)} 条评论</summary>
-              <div class="comment-grid">
-                ${hiddenRecords.map((record) => renderCommentCard(record)).join("")}
-              </div>
-            </details>
-          `
-          : ""
-      }
-    </article>
-  `;
 }
 
-function renderSourcePreviewV2() {
-  const container = byId("source-preview");
+function renderSourcePreview() {
+  const panel = byId("source-preview");
   const payload = state.inputPayload;
   const source = state.source;
-  const processing = source?.video_processing || null;
 
   if (!payload && !source) {
-    container.classList.add("empty");
-    container.innerHTML = "尚未抓取链接数据，也尚未填充分析样例。";
+    panel.classList.add("empty");
+    panel.innerHTML = "尚未抓取链接数据。";
     return;
   }
 
-  const commentCount = payload?.comment_records?.length ?? payload?.comments?.length ?? 0;
-  const commentScanned =
-    source?.comment_count_scanned || payload?.metadata?.comment_count_scanned || commentCount;
-  const ocrCount = payload?.ocr_text?.length ?? 0;
-  const visualCount = payload?.visual_descriptions?.length ?? 0;
-  const audioCueCount = payload?.audio_cues?.length ?? 0;
-  const speechSource = processing?.speech_source || "manual";
-  const asrBackend = processing?.asr_backend || "-";
-
-  container.classList.remove("empty");
-  container.innerHTML = `
+  panel.classList.remove("empty");
+  panel.innerHTML = `
     <article class="summary-card">
       <div class="summary-top">
-        <h3>${escapeHtml(payload?.title || source?.title || "当前素材")}</h3>
-        <span class="pill">${escapeHtml(source?.platform || payload?.metadata?.platform || "manual")}</span>
+        <h3>欢迎使用研判系统</h3>
+        <span class="pill">${escapeHtml(localizePlatform(source?.platform || payload?.metadata?.platform || "手动输入"))}</span>
       </div>
-      <p>${escapeHtml(payload?.description || source?.desc || "暂无描述")}</p>
+      <p>完成链接抓取后，请点击上方“数据处理与采集模块”查看视频编号、标题、描述、ASR、OCR和评论等完整采集字段。</p>
       <div class="meta">
-        <span class="pill">视频编号 ${escapeHtml(payload?.video_id || source?.aweme_id || "-")}</span>
-        <span class="pill">作者 ${escapeHtml(source?.author_nickname || payload?.metadata?.author_nickname || "-")}</span>
-        <span class="pill">重要评论 ${escapeHtml(commentCount)}</span>
-        <span class="pill">候选评论 ${escapeHtml(commentScanned)}</span>
-        <span class="pill">OCR ${escapeHtml(ocrCount)}</span>
-        <span class="pill">视觉线索 ${escapeHtml(visualCount)}</span>
-        <span class="pill">音频线索 ${escapeHtml(audioCueCount)}</span>
-        ${
-          processing
-            ? `<span class="pill">抽帧 ${escapeHtml(processing.extracted_frame_count || 0)}</span>
-               <span class="pill">ASR ${escapeHtml(processing.asr_completed ? "完成" : "未完成")}</span>
-               <span class="pill">语音来源 ${escapeHtml(speechSource)}</span>
-               <span class="pill">ASR 后端 ${escapeHtml(asrBackend)}</span>`
-            : ""
-        }
+        <span class="pill">采集状态 ${escapeHtml(source ? "已抓取" : "待抓取")}</span>
+        <span class="pill">重要评论 ${escapeHtml(payload?.comment_records?.length || payload?.comments?.length || 0)}</span>
+        <span class="pill">筛选模式 ${escapeHtml(localizeCommentSelectionMode(source?.comment_selection_mode || payload?.metadata?.comment_selection_mode || "comprehensive"))}</span>
       </div>
     </article>
   `;
 }
 
-function renderModuleNav() {
-  const nav = byId("module-nav");
-  const route = parseRoute();
-
-  const items = [
+function renderNav() {
+  const route = getRoute();
+  const navItems = [
     {
       label: "总览页",
       route: "#/overview",
-      description: state.analysis ? "综合结论与行动建议" : "等待分析结果"
+      description: "查看综合风险结论与处置建议。",
     },
     {
-      label: "采集页",
-      route: "#/source",
-      description: state.source ? "查看抓取、抽帧和结构化评论" : "查看当前表单数据"
+      label: "流程页",
+      route: "#/flow",
+      description: state.analysis
+        ? "查看完整研判流程和执行轨迹。"
+        : "请先执行分析。",
+      disabled: !state.analysis,
     },
-    ...state.modules.map((module) => {
-      const finding = getFinding(module.module_id);
+    ...state.modules.map((moduleProfile) => {
+      const finding = findModuleFinding(moduleProfile.module_id);
       return {
-        label: module.module_name,
-        route: `#/module/${module.module_id}`,
-        description: finding ? finding.summary || module.detection_goal : module.detection_goal,
-        level: finding?.risk_level ?? null
+        label: moduleProfile.module_name,
+        route: `#/module/${moduleProfile.module_id}`,
+        description: finding?.summary || moduleProfile.detection_goal,
+        level: finding?.risk_level || null,
       };
-    })
+    }),
   ];
 
-  nav.innerHTML = items
+  byId("module-nav").innerHTML = navItems
     .map((item) => {
-      const isActive =
-        item.route === "#/overview"
-          ? route.type === "overview"
-          : item.route === "#/source"
-            ? route.type === "source"
-            : route.type === "module" && item.route === `#/module/${route.id}`;
+      const active =
+        (item.route === "#/overview" && route.type === "overview") ||
+        (item.route === "#/flow" && route.type === "flow") ||
+        (route.type === "module" && item.route === `#/module/${route.moduleId}`);
 
       return `
-        <button type="button" class="nav-button ${isActive ? "active" : ""}" data-route="${escapeHtml(item.route)}">
+        <button
+          type="button"
+          class="nav-button ${active ? "active" : ""}"
+          data-route="${escapeHtml(item.route)}"
+          ${item.disabled ? "disabled" : ""}
+        >
           <span class="nav-label-row">
             <strong>${escapeHtml(item.label)}</strong>
-            ${item.level ? badge(item.level) : ""}
+            ${item.level ? renderBadge(item.level) : ""}
           </span>
-          <span class="nav-description">${escapeHtml(item.description)}</span>
+          <span class="nav-description">${escapeHtml(item.description || "")}</span>
         </button>
       `;
     })
@@ -810,60 +410,56 @@ function renderModuleNav() {
 }
 
 function renderOverviewPage() {
-  const container = byId("module-detail");
+  const panel = byId("module-detail");
+  const output = state.analysis;
 
-  if (!state.analysis) {
-    container.classList.remove("empty");
-    container.innerHTML = `
-      ${renderEmptyCard("总览页", "当前还没有分析结果。请先抓取数据并完成字段检查，然后启动多模块分析。")}
-      ${renderKeyGrid([
-        { label: "当前视频编号", value: state.inputPayload?.video_id || "-" },
-        { label: "当前标题", value: state.inputPayload?.title || "-" },
-        {
-          label: "重要评论条数",
-          value: String(state.inputPayload?.comment_records?.length || state.inputPayload?.comments?.length || 0)
-        },
-        { label: "OCR 条数", value: String(state.inputPayload?.ocr_text?.length || 0) }
-      ])}
+  if (!output) {
+    panel.classList.remove("empty");
+    panel.innerHTML = `
+      <article class="summary-card">
+        <h3>总览页</h3>
+        <p>请先抓取抖音链接并执行分析。</p>
+      </article>
     `;
     return;
   }
 
-  const recommendations = (state.analysis.next_actions || [])
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("");
-  const topFindings = [...(state.analysis.module_findings || [])]
-    .sort((left, right) => Number(right.risk_score) - Number(left.risk_score))
-    .slice(0, 4);
-
-  container.classList.remove("empty");
-  container.innerHTML = `
+  panel.classList.remove("empty");
+  panel.innerHTML = `
     <article class="summary-card">
       <div class="summary-top">
         <h3>综合结论</h3>
-        ${badge(state.analysis.overall_risk_level)}
+        ${renderBadge(output.overall_risk_level)}
       </div>
-      <p>${escapeHtml(state.analysis.summary || "暂无综合结论")}</p>
+      <p>${escapeHtml(output.summary || "-")}</p>
       <div class="meta">
-        <span class="pill">request ${escapeHtml(state.analysis.request_id)}</span>
-        <span class="pill">score ${Number(state.analysis.overall_risk_score || 0).toFixed(3)}</span>
-        <span class="pill">模块数 ${escapeHtml(state.analysis.module_findings?.length || 0)}</span>
+        <span class="pill">分数 ${Number(output.overall_risk_score || 0).toFixed(3)}</span>
+        <span class="pill">请求 ${escapeHtml(output.request_id || "-")}</span>
       </div>
-      ${recommendations ? `<ul>${recommendations}</ul>` : ""}
+      ${
+        output.next_actions?.length
+          ? `<h3>下一步动作</h3><ul>${output.next_actions
+              .map((item) => `<li>${escapeHtml(item)}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
+      ${
+        output.recommendations?.length
+          ? `<h3>处置建议</h3><ul>${output.recommendations
+              .map((item) => `<li>${escapeHtml(item)}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
     </article>
-    ${topFindings
+    ${output.module_findings
       .map(
         (finding) => `
           <article class="finding-card">
             <div class="summary-top">
               <h3>${escapeHtml(finding.module_name)}</h3>
-              ${badge(finding.risk_level)}
+              ${renderBadge(finding.risk_level)}
             </div>
-            <p>${escapeHtml(finding.summary || "该模块暂无补充说明。")}</p>
-            <div class="meta">
-              <span class="pill">score ${Number(finding.risk_score || 0).toFixed(3)}</span>
-              <span class="pill">target ${escapeHtml(finding.target || "-")}</span>
-            </div>
+            <p>${escapeHtml(finding.summary || "-")}</p>
           </article>
         `
       )
@@ -871,410 +467,457 @@ function renderOverviewPage() {
   `;
 }
 
-function renderSourcePageV2() {
-  const container = byId("module-detail");
-  const source = state.source;
-  const payload = state.inputPayload;
-  const processing = source?.video_processing || null;
+function renderFlowPage() {
+  const panel = byId("module-detail");
+  const output = state.analysis;
 
-  if (!payload && !source) {
-    container.classList.add("empty");
-    container.innerHTML = "当前没有可展示的采集信息。";
+  if (!output) {
+    panel.classList.remove("empty");
+    panel.innerHTML = `
+      <article class="summary-card">
+        <h3>流程页</h3>
+        <p>请先执行分析，再查看完整流程。</p>
+      </article>
+    `;
     return;
   }
 
-  const sourceUrl = source?.source_url || byId("source_url").value.trim();
-  const comments = payload?.comments || [];
-  const commentRecords = payload?.comment_records || [];
-  const ocrText = payload?.ocr_text || [];
-  const visuals = payload?.visual_descriptions || [];
-  const audioCues = payload?.audio_cues || [];
-  const localVideoUrl = source?.video_asset_url || payload?.metadata?.video_asset_url || "";
-  const playableVideoUrl = localVideoUrl || source?.video_play_url || payload?.metadata?.video_play_url || "";
-  const audioAssetUrl = processing?.audio_asset_url || "";
-  const selectionStrategy =
-    source?.comment_selection_strategy || payload?.metadata?.comment_selection_strategy || "-";
+  const flow = output.pipeline_flow || [];
+  const trace = output.execution_trace || [];
 
-  container.classList.remove("empty");
-  container.innerHTML = `
+  panel.classList.remove("empty");
+  panel.innerHTML = `
     <article class="summary-card">
       <div class="summary-top">
-        <h3>采集信息详情</h3>
-        <span class="pill">${escapeHtml(source?.platform || payload?.metadata?.platform || "manual")}</span>
+        <h3>完整研判流程</h3>
+        <span class="pill">${escapeHtml(output.request_id || "-")}</span>
       </div>
-      <p>${escapeHtml(payload?.description || source?.desc || "暂无描述")}</p>
-      <div class="meta">
-        <span class="pill">视频编号 ${escapeHtml(payload?.video_id || source?.aweme_id || "-")}</span>
-        <span class="pill">作者 ${escapeHtml(source?.author_nickname || payload?.metadata?.author_nickname || "-")}</span>
-        <span class="pill">候选评论 ${escapeHtml(source?.comment_count_scanned || payload?.metadata?.comment_count_scanned || 0)}</span>
-        <span class="pill">重要评论 ${escapeHtml(source?.comment_count_fetched || commentRecords.length || comments.length)}</span>
-        ${
-          source?.publish_time
-            ? `<span class="pill">发布时间 ${escapeHtml(source.publish_time)}</span>`
-            : ""
-        }
-      </div>
-      ${renderKeyGrid([
-        { label: "源链接", value: sourceUrl || "-" },
-        { label: "标题", value: payload?.title || source?.title || "-" },
-        { label: "视频播放地址", value: playableVideoUrl || "-" },
-        { label: "评论筛选策略", value: selectionStrategy }
-      ])}
+      <ol class="workflow-list">
+        ${flow
+          .map(
+            (step) => `
+              <li class="workflow-step">
+                <div class="workflow-head">
+                  <strong>${escapeHtml(step.step_id || "-")} ${escapeHtml(step.title || "")}</strong>
+                  <span class="pill">${escapeHtml(step.stage || "-")}</span>
+                </div>
+                <p>${escapeHtml(step.detail || "-")}</p>
+                <div class="meta">
+                  ${step.module_id ? `<span class="pill">模块 ${escapeHtml(localizeTag(step.module_id))}</span>` : ""}
+                  ${step.status ? `<span class="pill">状态 ${escapeHtml(localizeStepStatus(step.status))}</span>` : ""}
+                  ${(step.refs || [])
+                    .slice(0, 6)
+                    .map((item) => `<span class="pill">${escapeHtml(localizeTag(item))}</span>`)
+                    .join("")}
+                </div>
+              </li>
+            `
+          )
+          .join("")}
+      </ol>
     </article>
-    ${
-      playableVideoUrl
-        ? `
+
+    <article class="summary-card">
+      <h3>执行轨迹</h3>
+      <ul>${trace.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </article>
+
+    ${output.module_findings
+      .map((finding) => {
+        const metricsText = JSON.stringify(finding.metrics || {}, null, 2);
+        return `
           <article class="summary-card">
             <div class="summary-top">
-              <h3>视频预览</h3>
+              <h3>${escapeHtml(finding.module_name)}</h3>
+              ${renderBadge(finding.risk_level)}
             </div>
-            <video class="video-preview" controls preload="metadata" src="${escapeHtml(playableVideoUrl)}"></video>
-          </article>
-        `
-        : ""
-    }
-    ${
-      audioAssetUrl
-        ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>音频预览</h3>
-            </div>
-            <audio class="video-preview" controls preload="metadata" src="${escapeHtml(audioAssetUrl)}"></audio>
-          </article>
-        `
-        : ""
-    }
-    ${
-      processing
-        ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>视频自动处理结果</h3>
-              <span class="pill">${escapeHtml(processing.completed ? "已完成" : "部分完成")}</span>
-            </div>
-            <div class="meta">
-              <span class="pill">模型 ${escapeHtml(processing.whisper_model || "-")}</span>
-              <span class="pill">抽帧 ${escapeHtml(processing.extracted_frame_count || 0)}</span>
-              <span class="pill">OCR ${escapeHtml(processing.ocr_line_count || 0)}</span>
-              <span class="pill">ASR 段落 ${escapeHtml(processing.asr_segment_count || 0)}</span>
-              <span class="pill">语言 ${escapeHtml(processing.asr_language || "-")}</span>
-              <span class="pill">ASR 后端 ${escapeHtml(processing.asr_backend || "-")}</span>
-              <span class="pill">语音来源 ${escapeHtml(processing.speech_source || "-")}</span>
-              <span class="pill">音频事件 ${escapeHtml(processing.audio_event_count || 0)}</span>
-              <span class="pill">抽帧策略 ${escapeHtml(processing.frame_strategy || "-")}</span>
-            </div>
+            <p>${escapeHtml(finding.summary || "-")}</p>
             ${
-              processing.notes?.length
-                ? `<ul>${processing.notes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+              finding.workflow_steps?.length
+                ? `
+                  <details class="expandable">
+                    <summary>模块流程步骤（${finding.workflow_steps.length}）</summary>
+                    <ol class="workflow-list">
+                      ${finding.workflow_steps
+                        .map(
+                          (step) => `
+                            <li class="workflow-step">
+                              <div class="workflow-head">
+                                <strong>${escapeHtml(step.step_id || "-")} ${escapeHtml(step.title || "")}</strong>
+                                <span class="pill">${escapeHtml(step.stage || "-")}</span>
+                              </div>
+                              <p>${escapeHtml(step.detail || "-")}</p>
+                              <div class="meta">
+                                ${(step.refs || [])
+                                  .slice(0, 5)
+                                  .map((item) => `<span class="pill">${escapeHtml(localizeTag(item))}</span>`)
+                                  .join("")}
+                              </div>
+                            </li>
+                          `
+                        )
+                        .join("")}
+                    </ol>
+                  </details>
+                `
                 : ""
             }
-          </article>
-        `
-        : ""
-    }
-    ${
-      payload?.speech_text
-        ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>ASR 文本</h3>
+            <details class="expandable">
+              <summary>模块指标</summary>
+              <pre class="code-block">${formatJson(finding.metrics || {})}</pre>
+            </details>
+            <div class="action-row">
+              ${makeDownloadLink(metricsText, `${finding.module_id || "module"}-metrics.json`, "下载模块指标 JSON")}
             </div>
-            <pre class="code-block">${escapeHtml(payload.speech_text)}</pre>
           </article>
-        `
-        : ""
-    }
-    ${renderStructuredComments(commentRecords.slice(0, 12))}
-    ${!commentRecords.length ? renderListCard("评论预览", comments.slice(0, 12)) : ""}
-    ${renderListCard("OCR 文本", ocrText.slice(0, 12))}
-    ${renderListCard("视觉描述 / 抽帧摘要", visuals.slice(0, 12))}
-    ${renderListCard("音频线索", audioCues.slice(0, 12))}
-    ${renderFrameGallery(processing?.frames || [])}
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>元数据 JSON</h3>
-      </div>
-      <pre class="code-block">${formatJson(payload?.metadata || {})}</pre>
-    </article>
+        `;
+      })
+      .join("")}
   `;
 }
 
-function renderSourcePreview() {
-  const container = byId("source-preview");
-  const payload = state.inputPayload;
-  const source = state.source;
-  const processing = source?.video_processing || null;
-
-  if (!payload && !source) {
-    container.classList.add("empty");
-    container.innerHTML = "尚未抓取链接数据，也尚未填充分析样例。";
-    return;
+function renderCommentRecords(records) {
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) {
+    return "<p>暂无结构化评论记录。</p>";
   }
 
-  const commentCount = payload?.comment_records?.length ?? payload?.comments?.length ?? 0;
-  const commentScanned =
-    source?.comment_count_scanned || payload?.metadata?.comment_count_scanned || commentCount;
-  const ocrCount = payload?.ocr_text?.length ?? 0;
-  const visualCount = payload?.visual_descriptions?.length ?? 0;
-  const audioCueCount = payload?.audio_cues?.length ?? 0;
-  const speechSource = processing?.speech_source || "manual";
-  const asrBackend = processing?.asr_backend || "-";
-  const selectionMode =
-    source?.comment_selection_mode || payload?.metadata?.comment_selection_mode || "comprehensive";
-
-  container.classList.remove("empty");
-  container.innerHTML = `
-    <article class="summary-card">
-      <div class="summary-top">
-        <h3>${escapeHtml(payload?.title || source?.title || "当前素材")}</h3>
-        <span class="pill">${escapeHtml(source?.platform || payload?.metadata?.platform || "manual")}</span>
-      </div>
-      <p>${escapeHtml(payload?.description || source?.desc || "暂无描述")}</p>
-      <div class="meta">
-        <span class="pill">视频编号 ${escapeHtml(payload?.video_id || source?.aweme_id || "-")}</span>
-        <span class="pill">作者 ${escapeHtml(source?.author_nickname || payload?.metadata?.author_nickname || "-")}</span>
-        <span class="pill">重要评论 ${escapeHtml(commentCount)}</span>
-        <span class="pill">候选评论 ${escapeHtml(commentScanned)}</span>
-        <span class="pill">评论模式 ${escapeHtml(selectionMode)}</span>
-        <span class="pill">OCR ${escapeHtml(ocrCount)}</span>
-        <span class="pill">视觉线索 ${escapeHtml(visualCount)}</span>
-        <span class="pill">音频线索 ${escapeHtml(audioCueCount)}</span>
-        ${
-          processing
-            ? `<span class="pill">抽帧 ${escapeHtml(processing.extracted_frame_count || 0)}</span>
-               <span class="pill">ASR ${escapeHtml(processing.asr_completed ? "完成" : "未完成")}</span>
-               <span class="pill">语音来源 ${escapeHtml(speechSource)}</span>
-               <span class="pill">ASR 后端 ${escapeHtml(asrBackend)}</span>`
-            : ""
-        }
-      </div>
-    </article>
+  return `
+    <div class="comment-grid">
+      ${list
+        .map((record) => {
+          const tags = record.keyword_tags || [];
+          const replies = record.replies || [];
+          return `
+            <article class="comment-card">
+              <div class="summary-top">
+                <strong>${escapeHtml(record.speaker_nickname || record.speaker_id || "未知用户")}</strong>
+                <span class="pill">重要度 ${Number(record.importance_score || 0).toFixed(2)}</span>
+              </div>
+              <div class="meta">
+                <span class="pill">评论ID ${escapeHtml(record.comment_id || "-")}</span>
+                <span class="pill">发言人ID ${escapeHtml(record.speaker_id || "-")}</span>
+                <span class="pill">点赞 ${escapeHtml(record.like_count || 0)}</span>
+                <span class="pill">回复 ${escapeHtml(record.reply_count || 0)}</span>
+                ${record.publish_time ? `<span class="pill">${escapeHtml(record.publish_time)}</span>` : ""}
+                ${record.ip_label ? `<span class="pill">${escapeHtml(record.ip_label)}</span>` : ""}
+                ${record.is_hot ? `<span class="pill">热评</span>` : ""}
+                ${record.is_author ? `<span class="pill">作者发言</span>` : ""}
+              </div>
+              <p>${escapeHtml(record.text || "")}</p>
+              ${
+                tags.length
+                  ? `<div class="meta">${tags
+                      .map((tag) => `<span class="pill">${escapeHtml(localizeTag(tag))}</span>`)
+                      .join("")}</div>`
+                  : ""
+              }
+              ${
+                replies.length
+                  ? `
+                    <details class="expandable">
+                      <summary>回复链（${replies.length}）</summary>
+                      <div class="comment-reply-list">
+                        ${replies
+                          .map(
+                            (reply) => `
+                              <div class="comment-reply">
+                                <strong>${escapeHtml(reply.speaker_nickname || reply.speaker_id || "回复用户")}</strong>
+                                <span>${escapeHtml(reply.text || "")}</span>
+                                <span class="subtle">点赞 ${escapeHtml(reply.like_count || 0)}</span>
+                              </div>
+                            `
+                          )
+                          .join("")}
+                      </div>
+                    </details>
+                  `
+                  : ""
+              }
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
   `;
 }
 
 function renderSourcePage() {
-  const container = byId("module-detail");
+  const panel = byId("module-detail");
   const source = state.source;
   const payload = state.inputPayload;
-  const processing = source?.video_processing || null;
+  const collectionFinding = findModuleFinding("data_collection");
 
-  if (!payload && !source) {
-    container.classList.add("empty");
-    container.innerHTML = "当前没有可展示的采集信息。";
+  if (!source && !payload) {
+    panel.classList.add("empty");
+    panel.innerHTML = "暂无采集数据。";
     return;
   }
 
-  const sourceUrl = source?.source_url || byId("source_url").value.trim();
-  const comments = payload?.comments || [];
-  const commentRecords = payload?.comment_records || [];
-  const ocrText = payload?.ocr_text || [];
-  const visuals = payload?.visual_descriptions || [];
-  const audioCues = payload?.audio_cues || [];
-  const localVideoUrl = source?.video_asset_url || payload?.metadata?.video_asset_url || "";
-  const playableVideoUrl = localVideoUrl || source?.video_play_url || payload?.metadata?.video_play_url || "";
-  const audioAssetUrl = processing?.audio_asset_url || "";
-  const selectionStrategy =
-    source?.comment_selection_strategy || payload?.metadata?.comment_selection_strategy || "-";
-  const selectionMode =
-    source?.comment_selection_mode || payload?.metadata?.comment_selection_mode || "comprehensive";
+  const processing = source?.video_processing || null;
+  const videoUrl =
+    source?.video_asset_url || source?.video_play_url || payload?.metadata?.video_play_url || "";
+  const metadata = payload?.metadata || {};
 
-  container.classList.remove("empty");
-  container.innerHTML = `
+  panel.classList.remove("empty");
+  panel.innerHTML = `
+    ${
+      collectionFinding
+        ? `
+          <article class="summary-card">
+            <div class="summary-top">
+              <h3>${escapeHtml(collectionFinding.module_name)}</h3>
+              ${renderBadge(collectionFinding.risk_level)}
+            </div>
+            <p>${escapeHtml(collectionFinding.summary || "-")}</p>
+            <div class="meta">
+              <span class="pill">分数 ${Number(collectionFinding.risk_score || 0).toFixed(3)}</span>
+              ${(collectionFinding.tags || [])
+                .slice(0, 8)
+                .map((tag) => `<span class="pill">${escapeHtml(localizeTag(tag))}</span>`)
+                .join("")}
+            </div>
+          </article>
+        `
+        : ""
+    }
+
     <article class="summary-card">
       <div class="summary-top">
-        <h3>采集信息详情</h3>
-        <span class="pill">${escapeHtml(source?.platform || payload?.metadata?.platform || "manual")}</span>
+        <h3>采集结果摘要</h3>
+        <span class="pill">${escapeHtml(localizePlatform(source?.platform || metadata.platform || "未知平台"))}</span>
       </div>
-      <p>${escapeHtml(payload?.description || source?.desc || "暂无描述")}</p>
       <div class="meta">
-        <span class="pill">视频编号 ${escapeHtml(payload?.video_id || source?.aweme_id || "-")}</span>
-        <span class="pill">作者 ${escapeHtml(source?.author_nickname || payload?.metadata?.author_nickname || "-")}</span>
-        <span class="pill">候选评论 ${escapeHtml(source?.comment_count_scanned || payload?.metadata?.comment_count_scanned || 0)}</span>
-        <span class="pill">重要评论 ${escapeHtml(source?.comment_count_fetched || commentRecords.length || comments.length)}</span>
-        <span class="pill">筛选模式 ${escapeHtml(selectionMode)}</span>
-        ${
-          source?.publish_time
-            ? `<span class="pill">发布时间 ${escapeHtml(source.publish_time)}</span>`
-            : ""
-        }
+        <span class="pill">来源 ${escapeHtml(source?.source_url || "-")}</span>
+        <span class="pill">视频ID ${escapeHtml(source?.aweme_id || payload?.video_id || "-")}</span>
+        <span class="pill">作者 ${escapeHtml(source?.author_nickname || metadata.author_nickname || "-")}</span>
+        <span class="pill">扫描评论 ${escapeHtml(source?.comment_count_scanned || metadata.comment_count_scanned || 0)}</span>
+        <span class="pill">入选评论 ${escapeHtml(source?.comment_count_fetched || payload?.comment_records?.length || 0)}</span>
+        <span class="pill">筛选模式 ${escapeHtml(localizeCommentSelectionMode(source?.comment_selection_mode || metadata.comment_selection_mode || "-"))}</span>
       </div>
-      ${renderKeyGrid([
-        { label: "源链接", value: sourceUrl || "-" },
-        { label: "标题", value: payload?.title || source?.title || "-" },
-        { label: "视频播放地址", value: playableVideoUrl || "-" },
-        { label: "评论筛选策略", value: selectionStrategy }
-      ])}
+      ${
+        source?.comment_selection_strategy
+          ? `<p><strong>筛选策略：</strong>${escapeHtml(source.comment_selection_strategy)}</p>`
+          : ""
+      }
     </article>
+
     ${
-      playableVideoUrl
+      videoUrl
         ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>视频预览</h3>
-            </div>
-            <video class="video-preview" controls preload="metadata" src="${escapeHtml(playableVideoUrl)}"></video>
-          </article>
-        `
+        <article class="summary-card">
+          <h3>视频预览</h3>
+          <video class="video-preview" controls preload="metadata" src="${escapeHtml(videoUrl)}"></video>
+        </article>
+      `
         : ""
     }
-    ${
-      audioAssetUrl
-        ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>音频预览</h3>
-            </div>
-            <audio class="video-preview" controls preload="metadata" src="${escapeHtml(audioAssetUrl)}"></audio>
-          </article>
-        `
-        : ""
-    }
+
     ${
       processing
         ? `
-          <article class="summary-card">
-            <div class="summary-top">
-              <h3>视频自动处理结果</h3>
-              <span class="pill">${escapeHtml(processing.completed ? "已完成" : "部分完成")}</span>
-            </div>
-            <div class="meta">
-              <span class="pill">模型 ${escapeHtml(processing.whisper_model || "-")}</span>
-              <span class="pill">抽帧 ${escapeHtml(processing.extracted_frame_count || 0)}</span>
-              <span class="pill">OCR ${escapeHtml(processing.ocr_line_count || 0)}</span>
-              <span class="pill">ASR 段落 ${escapeHtml(processing.asr_segment_count || 0)}</span>
-              <span class="pill">语言 ${escapeHtml(processing.asr_language || "-")}</span>
-              <span class="pill">ASR 后端 ${escapeHtml(processing.asr_backend || "-")}</span>
-              <span class="pill">语音来源 ${escapeHtml(processing.speech_source || "-")}</span>
-              <span class="pill">音频事件 ${escapeHtml(processing.audio_event_count || 0)}</span>
-              <span class="pill">抽帧策略 ${escapeHtml(processing.frame_strategy || "-")}</span>
-            </div>
-            ${
-              processing.notes?.length
-                ? `<ul>${processing.notes.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
-                : ""
-            }
-          </article>
-        `
+        <article class="summary-card">
+          <h3>视频处理摘要</h3>
+          <div class="meta">
+            <span class="pill">抽帧数 ${escapeHtml(processing.extracted_frame_count || 0)}</span>
+            <span class="pill">OCR行数 ${escapeHtml(processing.ocr_line_count || 0)}</span>
+            <span class="pill">ASR分段 ${escapeHtml(processing.asr_segment_count || 0)}</span>
+            <span class="pill">ASR后端 ${escapeHtml(processing.asr_backend || "-")}</span>
+            <span class="pill">音频事件 ${escapeHtml(processing.audio_event_count || 0)}</span>
+          </div>
+          ${
+            processing.notes?.length
+              ? `<details class="expandable"><summary>处理备注</summary><ul>${processing.notes
+                  .map((note) => `<li>${escapeHtml(note)}</li>`)
+                  .join("")}</ul></details>`
+              : ""
+          }
+          ${
+            processing.frames?.length
+              ? `
+                <details class="expandable">
+                  <summary>抽帧明细（${processing.frames.length}）</summary>
+                  <div class="frame-gallery">
+                    ${processing.frames
+                      .map(
+                        (frame) => `
+                          <figure class="frame-card">
+                            ${
+                              frame.image_url
+                                ? `<img src="${escapeHtml(frame.image_url)}" alt="抽帧 ${escapeHtml(frame.timestamp_seconds)} 秒" />`
+                                : ""
+                            }
+                            <figcaption>
+                              <strong>时间 ${escapeHtml(frame.timestamp_seconds)} 秒</strong>
+                              <span>${escapeHtml((frame.ocr_text || []).join(" | ") || "无 OCR 文本")}</span>
+                            </figcaption>
+                          </figure>
+                        `
+                      )
+                      .join("")}
+                  </div>
+                </details>
+              `
+              : ""
+          }
+        </article>
+      `
         : ""
     }
-    ${renderExpandableTextCard("ASR 文本", payload?.speech_text || "", "speech_text.txt")}
-    ${renderStructuredComments(commentRecords)}
-    ${!commentRecords.length ? renderListCard("评论预览", comments) : ""}
-    ${renderListCard("OCR 文本", ocrText)}
-    ${renderListCard("视觉描述 / 抽帧摘要", visuals)}
-    ${renderListCard("音频线索", audioCues)}
-    ${renderFrameGallery(processing?.frames || [])}
+
+    ${renderTextCard("标题", payload?.title || source?.title || "", "title.txt")}
+    ${renderTextCard("描述", payload?.description || source?.desc || "", "description.txt")}
+    ${renderTextCard("ASR 文本", payload?.speech_text || "", "speech_text.txt")}
+    ${renderListCard("视频摘要 / 抽帧描述", payload?.visual_descriptions || [], "visual_descriptions.txt", 12)}
+    ${renderListCard("音频线索", payload?.audio_cues || [], "audio_cues.txt", 12)}
+    ${renderListCard("OCR 文本", payload?.ocr_text || [], "ocr_text.txt", 20)}
+    ${renderListCard("评论文本", payload?.comments || [], "comments.txt", 20)}
+
     <article class="summary-card">
-      <div class="summary-top">
-        <h3>元数据 JSON</h3>
+      <h3>结构化重要评论</h3>
+      ${renderCommentRecords(payload?.comment_records || [])}
+    </article>
+
+    <article class="summary-card">
+      <h3>元数据 JSON</h3>
+      <pre class="code-block">${formatJson(metadata)}</pre>
+      <div class="action-row">
+        ${makeDownloadLink(JSON.stringify(metadata, null, 2), "metadata.json", "下载元数据 JSON")}
       </div>
-      <pre class="code-block">${formatJson(payload?.metadata || {})}</pre>
     </article>
   `;
 }
 
 function renderModulePage(moduleId) {
-  const container = byId("module-detail");
-  const module = state.modules.find((item) => item.module_id === moduleId);
-
-  if (!module) {
-    container.classList.add("empty");
-    container.innerHTML = "未找到对应模块。";
+  const panel = byId("module-detail");
+  const finding = findModuleFinding(moduleId);
+  if (!finding) {
+    panel.classList.remove("empty");
+    panel.innerHTML = `
+      <article class="summary-card">
+        <h3>模块结果</h3>
+        <p>当前没有模块 <code>${escapeHtml(moduleId)}</code> 的结果。</p>
+      </article>
+    `;
     return;
   }
 
-  const finding = getFinding(moduleId);
-  const evidence = finding?.evidence || [];
-  const recommendations = finding?.recommendations || [];
-  const tags = finding?.tags || [];
+  const evidenceText = (finding.evidence || [])
+    .map((item) => `${item.source} | ${item.reason} | ${item.excerpt}`)
+    .join("\n");
+  const recommendationText = (finding.recommendations || []).join("\n");
+  const metricsText = JSON.stringify(finding.metrics || {}, null, 2);
 
-  container.classList.remove("empty");
-  container.innerHTML = `
+  panel.classList.remove("empty");
+  panel.innerHTML = `
     <article class="summary-card">
       <div class="summary-top">
-        <h3>${escapeHtml(module.module_name)}</h3>
-        ${finding ? badge(finding.risk_level) : '<span class="pill">等待分析</span>'}
+        <h3>${escapeHtml(finding.module_name)}</h3>
+        ${renderBadge(finding.risk_level)}
       </div>
-      <p>${escapeHtml(module.detection_goal)}</p>
+      <p>${escapeHtml(finding.summary || "-")}</p>
       <div class="meta">
-        <span class="pill">${escapeHtml(module.module_group)}</span>
-        ${
-          finding
-            ? `<span class="pill">score ${Number(finding.risk_score || 0).toFixed(3)}</span>`
-            : ""
-        }
+        <span class="pill">分数 ${Number(finding.risk_score || 0).toFixed(3)}</span>
+        <span class="pill">模块 ${escapeHtml(localizeTag(finding.module_id || "-"))}</span>
+        ${(finding.tags || [])
+          .slice(0, 8)
+          .map((tag) => `<span class="pill">${escapeHtml(localizeTag(tag))}</span>`)
+          .join("")}
       </div>
     </article>
+
     ${
-      finding
+      finding.evidence?.length
         ? `
-          <article class="finding-card">
-            <div class="summary-top">
-              <h3>模块结论</h3>
-              ${badge(finding.risk_level)}
+          <article class="summary-card">
+            <h3>证据链</h3>
+            <ul>
+              ${finding.evidence
+                .map(
+                  (item) =>
+                    `<li><strong>${escapeHtml(localizeTag(item.source))}</strong> | ${escapeHtml(item.reason)} | ${escapeHtml(item.excerpt)}</li>`
+                )
+                .join("")}
+            </ul>
+            <div class="action-row">
+              ${makeDownloadLink(evidenceText, `${finding.module_id}-evidence.txt`, "下载证据文本")}
             </div>
-            <p>${escapeHtml(finding.summary || "该模块暂无额外摘要。")}</p>
-            ${
-              tags.length
-                ? `<div class="meta">${tags
-                    .map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`)
-                    .join("")}</div>`
-                : ""
-            }
           </article>
-          ${
-            evidence.length
-              ? `
-                <article class="summary-card">
-                  <div class="summary-top">
-                    <h3>证据链</h3>
-                  </div>
-                  <ul>
-                    ${evidence
-                      .map(
-                        (item) => `
-                          <li>
-                            ${escapeHtml(item.source)} | ${escapeHtml(item.reason)} | ${escapeHtml(item.excerpt)}
-                          </li>
-                        `
-                      )
-                      .join("")}
-                  </ul>
-                </article>
-              `
-              : ""
-          }
-          ${
-            recommendations.length
-              ? `
-                <article class="summary-card">
-                  <div class="summary-top">
-                    <h3>处置建议</h3>
-                  </div>
-                  <ul>
-                    ${recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-                  </ul>
-                </article>
-              `
-              : ""
-          }
         `
-        : renderEmptyCard("模块结果未生成", "当前还没有该模块的分析结论。请先执行一次多模块分析。")
+        : ""
+    }
+
+    ${
+      finding.recommendations?.length
+        ? `
+          <article class="summary-card">
+            <h3>建议动作</h3>
+            <ul>${finding.recommendations
+              .map((item) => `<li>${escapeHtml(item)}</li>`)
+              .join("")}</ul>
+            <div class="action-row">
+              ${makeDownloadLink(recommendationText, `${finding.module_id}-recommendations.txt`, "下载建议文本")}
+            </div>
+          </article>
+        `
+        : ""
+    }
+
+    <article class="summary-card">
+      <h3>模块指标</h3>
+      <pre class="code-block">${formatJson(finding.metrics || {})}</pre>
+      <div class="action-row">
+        ${makeDownloadLink(metricsText, `${finding.module_id}-metrics.json`, "下载指标 JSON")}
+      </div>
+    </article>
+
+    ${
+      finding.workflow_steps?.length
+        ? `
+          <article class="summary-card">
+            <h3>流程步骤</h3>
+            <ol class="workflow-list">
+              ${finding.workflow_steps
+                .map(
+                  (step) => `
+                    <li class="workflow-step">
+                      <div class="workflow-head">
+                        <strong>${escapeHtml(step.step_id || "-")} ${escapeHtml(step.title || "")}</strong>
+                        <span class="pill">${escapeHtml(step.stage || "-")}</span>
+                      </div>
+                      <p>${escapeHtml(step.detail || "-")}</p>
+                      <div class="meta">
+                        ${(step.refs || [])
+                          .slice(0, 6)
+                          .map((ref) => `<span class="pill">${escapeHtml(localizeTag(ref))}</span>`)
+                          .join("")}
+                      </div>
+                    </li>
+                  `
+                )
+                .join("")}
+            </ol>
+          </article>
+        `
+        : ""
     }
   `;
 }
 
-function renderDetailPage() {
-  const route = parseRoute();
-  renderModuleNav();
-
-  if (route.type === "source") {
-    renderSourcePage();
+function renderDetail() {
+  cleanupDownloadUrls();
+  renderNav();
+  const route = getRoute();
+  if (route.type === "flow") {
+    renderFlowPage();
     return;
   }
   if (route.type === "module") {
-    renderModulePage(route.id);
+    if (route.moduleId === "data_collection") {
+      renderSourcePage();
+      return;
+    }
+    renderModulePage(route.moduleId);
     return;
   }
   renderOverviewPage();
@@ -1283,9 +926,8 @@ function renderDetailPage() {
 async function readErrorMessage(response) {
   const text = await response.text();
   if (!text) {
-    return "请求失败";
+    return "请求失败。";
   }
-
   try {
     const parsed = JSON.parse(text);
     return parsed.detail || text;
@@ -1296,10 +938,12 @@ async function readErrorMessage(response) {
 
 async function submitFetch(event) {
   event.preventDefault();
-  byId("source-preview").classList.remove("empty");
-  byId("source-preview").innerHTML = renderLoading("正在抓取抖音视频、评论和结构化互动信息，请稍候...");
-  byId("module-detail").classList.remove("empty");
-  byId("module-detail").innerHTML = renderLoading("正在准备采集详情页...");
+  byId("source-preview").innerHTML = renderLoading(
+    "正在抓取链接并准备采集数据..."
+  );
+  byId("module-detail").innerHTML = renderLoading(
+    "正在等待采集结果..."
+  );
 
   try {
     const response = await fetch("/api/v1/fetch/url", {
@@ -1308,14 +952,14 @@ async function submitFetch(event) {
       body: JSON.stringify({
         source_url: byId("source_url").value.trim(),
         max_comments: Number(byId("max_comments").value || 20),
-        comment_selection_mode: byId("comment_selection_mode").value || "comprehensive",
+        comment_selection_mode:
+          byId("comment_selection_mode").value || "comprehensive",
         process_video: byId("process_video").checked,
         frame_interval_seconds: Number(byId("frame_interval_seconds").value || 4),
         max_frames: Number(byId("max_frames").value || 6),
-        asr_model_path: byId("asr_model_path").value.trim() || null
-      })
+        asr_model_path: byId("asr_model_path").value.trim() || null,
+      }),
     });
-
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
     }
@@ -1323,9 +967,10 @@ async function submitFetch(event) {
     const data = await response.json();
     state.source = data.source;
     state.inputPayload = data.input_payload;
+    state.analysis = null;
     fillForm(data.input_payload);
     renderSourcePreview();
-    routeTo("#/source");
+    navigateTo("#/module/data_collection");
   } catch (error) {
     const message = escapeHtml(String(error.message || error));
     byId("source-preview").innerHTML = `<div class="summary-card"><p>抓取失败：${message}</p></div>`;
@@ -1334,104 +979,97 @@ async function submitFetch(event) {
 }
 
 async function submitAnalysis(event) {
-  event.preventDefault();
-
-  let payload;
-  try {
-    payload = readPayloadFromForm();
-  } catch (error) {
-    byId("module-detail").classList.remove("empty");
-    byId("module-detail").innerHTML = `<div class="summary-card"><p>分析前校验失败：${escapeHtml(String(error.message || error))}</p></div>`;
-    return;
+  if (event?.preventDefault) {
+    event.preventDefault();
   }
 
-  state.inputPayload = payload;
+  const payload = state.inputPayload;
+  if (!payload) {
+    byId("module-detail").innerHTML = `<div class="summary-card"><p>请先抓取链接，生成采集数据后再执行分析。</p></div>`;
+    return;
+  }
   renderSourcePreview();
-  byId("module-detail").classList.remove("empty");
-  byId("module-detail").innerHTML = renderLoading("系统正在调度多模块分析，请稍候...");
+  byId("module-detail").innerHTML = renderLoading(
+    "正在执行多模块分析与综合决策..."
+  );
 
   try {
     const response = await fetch("/api/v1/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
-
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
     }
-
     state.analysis = await response.json();
-    routeTo("#/overview");
+    navigateTo("#/flow");
   } catch (error) {
-    byId("module-detail").innerHTML = `<div class="summary-card"><p>分析失败：${escapeHtml(String(error.message || error))}</p></div>`;
+    byId("module-detail").innerHTML = `<div class="summary-card"><p>分析失败：${escapeHtml(
+      String(error.message || error)
+    )}</p></div>`;
   }
 }
 
 async function loadModules() {
   const response = await fetch("/api/v1/modules");
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
   state.modules = await response.json();
-  renderModuleNav();
-  renderDetailPage();
 }
 
-function useDemoPayload() {
+function fillDemoSample() {
   state.source = {
-    platform: "demo",
-    source_url: demoPayload.source_url,
-    aweme_id: demoPayload.video_id,
-    title: demoPayload.title,
+    platform: "演示样例",
+    source_url: DEMO_PAYLOAD.source_url || "",
+    aweme_id: DEMO_PAYLOAD.video_id,
+    title: DEMO_PAYLOAD.title,
     author_nickname: "演示账号",
-    desc: demoPayload.description,
-    cover_url: "",
-    publish_time: "",
-    video_downloaded: false,
-    video_path: null,
-    video_play_url: "",
-    comment_count_fetched: demoPayload.comment_records.length,
-    comment_count_scanned: demoPayload.metadata.comment_count_scanned,
-    comment_total_reported: demoPayload.metadata.comment_count_scanned,
-    comment_selection_mode: demoPayload.metadata.comment_selection_mode,
-    comment_selection_strategy: demoPayload.metadata.comment_selection_strategy
+    comment_count_scanned: 30,
+    comment_selection_mode: "comprehensive",
+    comment_selection_strategy:
+      "互动强度 + 回复链活跃 + 作者参与 + 关键词信号 + 去重",
   };
+  state.inputPayload = DEMO_PAYLOAD;
   state.analysis = null;
-  state.inputPayload = demoPayload;
-  fillForm(demoPayload);
+  fillForm(DEMO_PAYLOAD);
   renderSourcePreview();
-  routeTo("#/source");
+  navigateTo("#/module/data_collection");
 }
 
-byId("fill-demo").addEventListener("click", useDemoPayload);
-byId("url-form").addEventListener("submit", submitFetch);
-byId("analysis-form").addEventListener("submit", submitAnalysis);
-byId("module-nav").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-route]");
-  if (!button) {
-    return;
-  }
-  routeTo(button.dataset.route);
-});
-
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-download-key]");
-  if (!button) {
-    return;
-  }
-  downloadByKey(button.dataset.downloadKey);
-});
-
-document
-  .querySelectorAll("#analysis-form input, #analysis-form textarea")
-  .forEach((element) => element.addEventListener("input", syncFormState));
-
-window.addEventListener("hashchange", renderDetailPage);
-
-state.inputPayload = demoPayload;
-fillForm(demoPayload);
-renderSourcePreview();
-loadModules();
-if (!window.location.hash) {
-  routeTo("#/overview");
-} else {
-  renderDetailPage();
+function attachEvents() {
+  byId("fill-demo").addEventListener("click", fillDemoSample);
+  byId("url-form").addEventListener("submit", submitFetch);
+  byId("analyze-run").addEventListener("click", submitAnalysis);
+  byId("module-nav").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-route]");
+    if (!button || button.disabled) {
+      return;
+    }
+    navigateTo(button.dataset.route);
+  });
+  window.addEventListener("hashchange", renderDetail);
 }
+
+async function init() {
+  attachEvents();
+  state.inputPayload = DEMO_PAYLOAD;
+  fillForm(DEMO_PAYLOAD);
+  renderSourcePreview();
+
+  try {
+    await loadModules();
+    if (!window.location.hash) {
+      navigateTo("#/overview");
+    } else {
+      renderDetail();
+    }
+  } catch (error) {
+    byId("module-detail").innerHTML = `<div class="summary-card"><p>模块加载失败：${escapeHtml(
+      String(error.message || error)
+    )}</p></div>`;
+  }
+}
+
+init();

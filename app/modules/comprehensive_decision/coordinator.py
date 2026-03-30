@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.models.schemas import AnalysisOutput, Evidence, ModuleFinding, PreprocessedContent, RiskLevel
+from app.models.schemas import (
+    AnalysisOutput,
+    Evidence,
+    ModuleFinding,
+    PreprocessedContent,
+    RiskLevel,
+    WorkflowStep,
+)
 from app.modules.shared import BaseIndependentModule, clamp_score, score_to_level, unique_keep_order
 
 
@@ -8,6 +15,12 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
     module_id = "comprehensive_decision"
     module_name = "综合决策模块"
     target = "整合协调独立模块输出总体风险结论"
+    RISK_LEVEL_LABELS = {
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "critical": "严重",
+    }
 
     def __init__(self) -> None:
         self.weights = {
@@ -44,6 +57,7 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
         content: PreprocessedContent,
         independent_findings: list[ModuleFinding],
         execution_trace: list[str],
+        pipeline_flow: list[WorkflowStep] | None = None,
     ) -> AnalysisOutput:
         decision_finding, recommendations, next_actions = self.analyze(
             content,
@@ -60,6 +74,7 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
             recommendations=recommendations,
             next_actions=next_actions,
             execution_trace=execution_trace,
+            pipeline_flow=pipeline_flow or [],
         )
 
     def _aggregate_score(self, findings: list[ModuleFinding]) -> float:
@@ -118,8 +133,9 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
         if not top_findings:
             return "综合决策判断当前样本整体风险较低，独立模块均未发现强烈风险信号，可作为基线样本保存。"
         module_names = "、".join(item.module_name for item in top_findings[:3])
+        level_label = self.RISK_LEVEL_LABELS.get(overall_level.value, overall_level.value)
         return (
-            f"综合决策模块判定当前样本为 {overall_level.value} 风险，"
+            f"综合决策模块判定当前样本为{level_label}风险，"
             f"主要风险来源于 {module_names}。"
         )
 
@@ -128,7 +144,7 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
         for finding in sorted(findings, key=lambda item: item.risk_score, reverse=True)[:4]:
             evidence.append(
                 Evidence(
-                    source=finding.module_id,
+                    source=finding.module_name,
                     excerpt=finding.summary[:120],
                     reason=f"模块风险分数: {finding.risk_score:.3f}",
                 )
@@ -140,7 +156,8 @@ class ComprehensiveDecisionModule(BaseIndependentModule):
         findings: list[ModuleFinding],
         overall_level: RiskLevel,
     ) -> list[str]:
-        tags = [f"overall-{overall_level.value}"]
+        level_label = self.RISK_LEVEL_LABELS.get(overall_level.value, overall_level.value)
+        tags = [f"总体风险-{level_label}"]
         for finding in findings:
             tags.extend(finding.tags[:2])
         return unique_keep_order(tags)

@@ -33,16 +33,16 @@ class DouyinFetcher:
     )
     COMMENT_SELECTION_STRATEGIES = {
         CommentSelectionMode.comprehensive: (
-            "engagement + reply-thread + author-participation + keyword-signal + dedupe"
+            "互动强度 + 回复链活跃 + 作者参与 + 关键词信号 + 去重"
         ),
         CommentSelectionMode.engagement: (
-            "reply-count + like-count + hot/pinned + author-participation + dedupe"
+            "回复数量 + 点赞数量 + 热评/置顶 + 作者参与 + 去重"
         ),
         CommentSelectionMode.recent: (
-            "latest-publish-time + interaction-assist + dedupe"
+            "最新发布时间 + 互动补偿 + 去重"
         ),
         CommentSelectionMode.risk: (
-            "risk-keywords + author-participation + interaction-assist + dedupe"
+            "风险关键词 + 作者参与 + 互动补偿 + 去重"
         ),
     }
     COMMENT_KEYWORD_GROUPS = {

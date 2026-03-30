@@ -27,6 +27,16 @@ class Evidence(BaseModel):
     reason: str
 
 
+class WorkflowStep(BaseModel):
+    step_id: str
+    stage: str
+    title: str
+    detail: str
+    module_id: str | None = None
+    status: str = "completed"
+    refs: list[str] = Field(default_factory=list)
+
+
 class ModuleFinding(BaseModel):
     module_id: str
     module_name: str
@@ -37,6 +47,8 @@ class ModuleFinding(BaseModel):
     tags: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    workflow_steps: list[WorkflowStep] = Field(default_factory=list)
 
 
 class CommentReply(BaseModel):
@@ -132,6 +144,7 @@ class AnalysisOutput(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
     execution_trace: list[str] = Field(default_factory=list)
+    pipeline_flow: list[WorkflowStep] = Field(default_factory=list)
 
 
 class ModuleProfile(BaseModel):

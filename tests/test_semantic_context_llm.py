@@ -51,7 +51,7 @@ class SemanticContextLlmTestCase(unittest.TestCase):
         finding = module.analyze(content)
 
         self.assertGreaterEqual(finding.risk_score, 0.72)
-        self.assertIn("llm-semantic-review", finding.tags)
+        self.assertIn("LLM语义复核", finding.tags)
         self.assertTrue(any(item.source == "comments" for item in finding.evidence))
         self.assertTrue(any("人工复核" in item for item in finding.recommendations))
 

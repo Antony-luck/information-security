@@ -60,8 +60,19 @@ class Settings:
         self.llm_base_url = os.getenv("LLM_BASE_URL", "").strip()
         self.llm_api_key = os.getenv("LLM_API_KEY", "").strip()
         self.llm_model = os.getenv("LLM_MODEL", "").strip()
+        self.llm_api_path = os.getenv("LLM_API_PATH", "/chat/completions").strip()
         self.llm_timeout_seconds = float(
             os.getenv("LLM_TIMEOUT_SECONDS", "60").strip() or "60"
+        )
+
+        self.fact_check_search_enabled = _to_bool(
+            os.getenv("FACT_CHECK_SEARCH_ENABLED"), default=False
+        )
+        self.fact_check_max_queries = int(
+            os.getenv("FACT_CHECK_MAX_QUERIES", "3").strip() or "3"
+        )
+        self.fact_check_timeout_seconds = float(
+            os.getenv("FACT_CHECK_TIMEOUT_SECONDS", "10").strip() or "10"
         )
 
     def _resolve_dir(self, env_name: str, default: Path) -> Path:
@@ -103,7 +114,11 @@ class Settings:
             "llm_provider": self.llm_provider or "unset",
             "llm_model": self.llm_model or "unset",
             "llm_ready": self.llm_ready,
+            "llm_api_path": self.llm_api_path,
             "llm_timeout_seconds": self.llm_timeout_seconds,
+            "fact_check_search_enabled": self.fact_check_search_enabled,
+            "fact_check_max_queries": self.fact_check_max_queries,
+            "fact_check_timeout_seconds": self.fact_check_timeout_seconds,
         }
 
 

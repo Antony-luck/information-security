@@ -3,7 +3,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable
 
-from app.models.schemas import Evidence, ModuleFinding, PreprocessedContent, RiskLevel
+from app.models.schemas import (
+    Evidence,
+    ModuleFinding,
+    PreprocessedContent,
+    RiskLevel,
+    WorkflowStep,
+)
 
 
 def clamp_score(score: float) -> float:
@@ -77,6 +83,8 @@ class BaseIndependentModule:
         tags: list[str] | None = None,
         evidence: list[Evidence] | None = None,
         recommendations: list[str] | None = None,
+        metrics: dict[str, object] | None = None,
+        workflow_steps: list[WorkflowStep] | None = None,
     ) -> ModuleFinding:
         final_score = clamp_score(score)
         return ModuleFinding(
@@ -89,4 +97,6 @@ class BaseIndependentModule:
             tags=unique_keep_order(tags or []),
             evidence=evidence or [],
             recommendations=unique_keep_order(recommendations or []),
+            metrics=metrics or {},
+            workflow_steps=workflow_steps or [],
         )

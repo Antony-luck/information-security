@@ -16,6 +16,20 @@ function renderLoading(message) {
   return `<div class="summary-card"><p>${escapeHtml(message)}</p></div>`;
 }
 
+function localizePlatform(platform) {
+  const value = String(platform || "").trim().toLowerCase();
+  if (!value || value === "unknown") {
+    return "未知平台";
+  }
+  if (value === "douyin") {
+    return "抖音";
+  }
+  if (value === "demo") {
+    return "演示样例";
+  }
+  return String(platform);
+}
+
 async function readErrorMessage(response) {
   const text = await response.text();
   if (!text) {
@@ -157,7 +171,7 @@ function renderSummary(data) {
     <article class="summary-card">
       <div class="summary-top">
         <h3>${escapeHtml(payload.title || source.title || "当前样本")}</h3>
-        <span class="pill">${escapeHtml(source.platform || "unknown")}</span>
+        <span class="pill">${escapeHtml(localizePlatform(source.platform || "unknown"))}</span>
       </div>
       <p>${escapeHtml(payload.description || source.desc || "暂无描述")}</p>
       <div class="meta">
@@ -226,25 +240,25 @@ function renderDetail(data) {
       <div class="debug-card-grid">
         <article class="summary-card">
           <div class="summary-top">
-            <h3>source_summary</h3>
+            <h3>source_summary（采集摘要）</h3>
           </div>
           <pre class="code-block">${formatJson(rawCollected.source_summary || {})}</pre>
         </article>
         <article class="summary-card">
           <div class="summary-top">
-            <h3>input_payload</h3>
+            <h3>input_payload（分析输入）</h3>
           </div>
           <pre class="code-block">${formatJson(rawCollected.input_payload || {})}</pre>
         </article>
         <article class="summary-card">
           <div class="summary-top">
-            <h3>normalized_segments</h3>
+            <h3>normalized_segments（预处理分段）</h3>
           </div>
           <pre class="code-block">${formatJson(preprocessed.normalized_segments || {})}</pre>
         </article>
         <article class="summary-card">
           <div class="summary-top">
-            <h3>standardized_metadata</h3>
+            <h3>standardized_metadata（标准化元数据）</h3>
           </div>
           <pre class="code-block">${formatJson(preprocessed.standardized_metadata || {})}</pre>
         </article>

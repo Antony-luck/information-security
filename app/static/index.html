@@ -3,33 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>内容安全智能研判系统</title>
+    <title>基于多智能体协作的短视频社区有害内容检测与告警系统</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <div class="bg-orb orb-a"></div>
     <div class="bg-orb orb-b"></div>
+    <div class="bg-orb orb-c"></div>
     <main class="shell">
       <section class="hero">
-        <p class="eyebrow">National Information Security Competition Prototype</p>
-        <h1>面向短视频多模态融合的内容安全智能研判系统</h1>
+        <p class="eyebrow">全国信息安全大赛原型系统</p>
+        <h1>基于多智能体协作的短视频社区有害内容检测与告警系统</h1>
         <p class="lead">
-          当前流程固定为“先抓取抖音链接，再自动下载视频并执行抽帧、OCR、ASR，
-          然后把采集结果回填到分析表单”。评论区不再做随机截取，而是先扩大候选集，
-          再按互动强度、回复链、作者参与和风险关键词筛出重要评论。
+          欢迎使用系统。推荐流程：先输入抖音链接并设置采集限制，抓取完成后进入“数据处理与采集模块”
+          查看并调整结构化字段，再执行多模块分析，最后在流程页与模块页对照完整证据链。
         </p>
         <div class="hero-actions">
-          <button id="fill-demo" class="primary">填充演示样例</button>
-          <a class="secondary" href="/debug/flow" rel="noreferrer">打开数据流检查页</a>
+          <button id="fill-demo" class="primary" type="button">填充演示样例</button>
+          <a class="secondary" href="/debug/flow" rel="noreferrer">打开数据流核查页</a>
           <a class="secondary" href="/docs" target="_blank" rel="noreferrer">打开 API 文档</a>
         </div>
       </section>
 
-      <section class="grid">
+      <section class="nav-top">
+        <div class="panel nav-panel">
+          <div class="panel-head">
+            <h2>模块导航</h2>
+            <p>点击模块名称切换页面；数据收集字段仅在“数据处理与采集模块”中展示。</p>
+          </div>
+          <div id="module-nav" class="nav-list"></div>
+        </div>
+      </section>
+
+      <section class="workspace-grid">
         <div class="panel">
           <div class="panel-head">
-            <h2>分析输入</h2>
-            <p>先抓取并回填项目栏，再按需要手工补充字段后启动分析。</p>
+            <h2>输入链接与采集限制</h2>
+            <p>先配置抓取与处理参数，再执行采集。采集后请点击上方“数据处理与采集模块”查看详细字段。</p>
           </div>
 
           <form id="url-form" class="form">
@@ -45,117 +55,53 @@
               <span>评论筛选模式</span>
               <select id="comment_selection_mode">
                 <option value="comprehensive" selected>综合收集</option>
-                <option value="engagement">按点赞和互动优先</option>
-                <option value="recent">按最近时间优先</option>
-                <option value="risk">按风险关键词优先</option>
+                <option value="engagement">点赞/互动优先</option>
+                <option value="recent">最近时间优先</option>
+                <option value="risk">风险关键词优先</option>
               </select>
             </label>
             <label class="checkbox-row">
               <input id="process_video" type="checkbox" checked />
-              <span>自动下载视频并执行抽帧 + OCR + ASR</span>
+              <span>启用视频处理：下载 + 抽帧 + OCR + ASR</span>
             </label>
             <div class="inline-fields">
               <label>
-                <span>抽帧间隔，秒</span>
-                <input
-                  id="frame_interval_seconds"
-                  type="number"
-                  min="1"
-                  max="30"
-                  step="1"
-                  value="4"
-                />
+                <span>抽帧间隔（秒）</span>
+                <input id="frame_interval_seconds" type="number" min="1" max="30" step="1" value="4" />
               </label>
               <label>
-                <span>最多抽帧数</span>
+                <span>最大抽帧数</span>
                 <input id="max_frames" type="number" min="1" max="24" step="1" value="6" />
               </label>
             </div>
             <label>
-              <span>离线 ASR 模型目录，可选</span>
-              <input
-                id="asr_model_path"
-                placeholder="例如：models/asr/tiny 或 D:\\models\\faster-whisper-tiny"
-              />
+              <span>离线 ASR 模型目录（可选）</span>
+              <input id="asr_model_path" placeholder="models/asr/tiny or D:\models\faster-whisper-tiny" />
             </label>
             <p class="hint">
-              推荐把离线模型下载到 <code>models/asr/tiny</code>，页面和 README 都会按这个目录优先查找。
+              推荐目录：<code>models/asr/tiny</code>，完整说明见 README。
             </p>
             <button class="secondary full" type="submit">抓取并填充项目栏</button>
-          </form>
-
-          <form id="analysis-form" class="form">
-            <label>
-              <span>视频编号</span>
-              <input id="video_id" value="demo-risk-001" />
-            </label>
-            <label>
-              <span>标题</span>
-              <input id="title" />
-            </label>
-            <label>
-              <span>描述</span>
-              <textarea id="description" rows="3"></textarea>
-            </label>
-            <label>
-              <span>ASR 文本</span>
-              <textarea id="speech_text" rows="4"></textarea>
-            </label>
-            <label>
-              <span>弹幕，每行一条</span>
-              <textarea id="bullet_chats" rows="4"></textarea>
-            </label>
-            <label>
-              <span>重要评论文本，每行一条</span>
-              <textarea id="comments" rows="6"></textarea>
-            </label>
-            <p class="hint">
-              结构化评论详情会在右侧“采集页”展示，文本框保留给你做手工补录和微调。
-            </p>
-            <label>
-              <span>视频描述 / 抽帧摘要，每行一条</span>
-              <textarea id="visual_descriptions" rows="4"></textarea>
-            </label>
-            <label>
-              <span>音频线索，每行一条</span>
-              <textarea id="audio_cues" rows="3"></textarea>
-            </label>
-            <label>
-              <span>OCR 文本，每行一条</span>
-              <textarea id="ocr_text" rows="3"></textarea>
-            </label>
-            <label>
-              <span>元数据 JSON</span>
-              <textarea id="metadata" rows="9">{}</textarea>
-            </label>
-            <button class="primary full" type="submit">启动多模块分析</button>
+            <button id="analyze-run" class="primary full" type="button">启动多模块分析</button>
           </form>
         </div>
 
-        <div class="stack">
-          <div class="panel compact">
-            <div class="panel-head">
-              <h2>采集概览</h2>
-              <p>显示最近一次抓取或当前表单中的核心素材信息，方便分析者快速确认对象。</p>
-            </div>
-            <div id="source-preview" class="result empty">尚未抓取链接数据，也尚未填充分析样例。</div>
+        <div class="panel compact">
+          <div class="panel-head">
+            <h2>欢迎与采集预览</h2>
+            <p>先完成抓取，再通过模块导航进入对应模块查看细节。</p>
           </div>
+          <div id="source-preview" class="result empty">尚未抓取链接数据。</div>
+        </div>
+      </section>
 
-          <div class="panel compact">
-            <div class="panel-head">
-              <h2>模块导航</h2>
-              <p>点击总览页、采集页或任一模块，右侧会切换到对应独立详情页面。</p>
-            </div>
-            <div id="module-nav" class="nav-list"></div>
+      <section class="workspace-detail">
+        <div class="panel panel-fill">
+          <div class="panel-head">
+            <h2>模块详情</h2>
+            <p>展示完整流程、证据链、指标和处置建议。</p>
           </div>
-
-          <div class="panel compact panel-fill">
-            <div class="panel-head">
-              <h2>详情页面</h2>
-              <p>分析完成后，这里会显示总览页、结构化评论、模块证据链和下一步建议。</p>
-            </div>
-            <div id="module-detail" class="result empty">等待抓取或分析结果。</div>
-          </div>
+          <div id="module-detail" class="result empty">等待抓取或分析结果。</div>
         </div>
       </section>
     </main>
